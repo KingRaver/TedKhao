@@ -158,7 +158,7 @@ def select_phase_register_and_signal(
     signals: list[Signal],
     recent_phases: Optional[list[Phase]] = None,
     recent_registers: Optional[list[Register]] = None,
-) -> tuple[Phase, Register, Optional[Signal]]:
+) -> tuple[Phase, Register, Optional[Signal], Optional[Signal]]:
     """Score the day's fetched signal pool into a Phase + Register + which Signal to post
     about -- the original-post equivalent of select_register_for_reply() above.
 
@@ -190,20 +190,28 @@ def select_phase_register_and_signal(
         recent_registers: last few registers used, to keep output varied (memory.py owns this).
 
     Returns:
-        (phase, register, signal) -- signal is None only when the pool itself is empty.
+        (phase, register, signal, convergence_partner) -- signal is None only when the pool
+        itself is empty. convergence_partner is the *other* signal of the rhyming pair
+        (RC-108) whenever phase is Convergence, and None otherwise: Convergence's whole
+        premise is two signals rhyming, so a caller that only received one (the prior
+        behavior here, which silently dropped the second) had no way to actually ground that
+        claim in the prompt -- see persona.prompts.build_post_prompt, which now requires this
+        for any Convergence phase.
     """
     recent_registers = recent_registers or []
 
     if not signals:
-        return Phase.QUIET, _pick_register_for_phase(Phase.QUIET, recent_registers), None
+        return Phase.QUIET, _pick_register_for_phase(Phase.QUIET, recent_registers), None, None
 
     top_signal = _select_top_signal(signals)
     high_novelty = [s for s in signals if s.novelty_score >= _CONVERGENCE_NOVELTY_THRESHOLD]
     convergent_pair = _find_convergent_pair(high_novelty)
 
+    convergence_partner = None
     if convergent_pair:
         phase = Phase.CONVERGENCE
         signal = _select_top_signal(list(convergent_pair))
+        convergence_partner = convergent_pair[1] if signal is convergent_pair[0] else convergent_pair[0]
     elif top_signal.novelty_evidenced and top_signal.novelty_score >= _BREAKTHROUGH_NOVELTY_THRESHOLD:
         phase = Phase.BREAKTHROUGH
         signal = top_signal
@@ -218,4 +226,4 @@ def select_phase_register_and_signal(
         signal = top_signal
 
     register = _pick_register_for_phase(phase, recent_registers)
-    return phase, register, signal
+    return phase, register, signal, convergence_partner

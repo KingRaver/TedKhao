@@ -178,14 +178,29 @@ FEW_SHOT_POST_EXAMPLES: dict[Register, list[str]] = {
 # Structure/personalization pools for original posts, straight from VOICE_GUIDE.md's "Tone /
 # structure / personalization knobs" section -- distinct from the reply pools above because a
 # post has no other person's message to react to or compare against.
+# Thread-opening ("a short thread (2-4 posts)...") was removed here (RC-108): the single-post
+# workflow has no mechanism to publish the follow-up posts it would set up, so offering it
+# produced an opening line with a promise the pipeline can't keep. Full thread publishing is
+# deferred and needs its own tracked scope -- see docs/REVIEW_CHECKLIST.md's decision log.
 POST_STRUCTURE_POOL = [
     "a single observation",
     "a question posed outward to the timeline",
-    "a short thread (2-4 posts) -- write just the opening post, ending in a way that sets up more",
     "a callback to an earlier post",
     "a direct comparison (\"X is basically Y, and here's why\")",
     "a quiet fact stated with minimal commentary",
 ]
+
+# Only offered when build_post_prompt is given last_confirmed_post (RC-108): a structural
+# callback needs the actual earlier post to reference, or the model has nothing to callback to
+# but its own invention.
+_CALLBACK_STRUCTURE = "a callback to an earlier post"
+
+# Only sensible when there's a Signal to compare against or state -- excluded whenever
+# build_post_prompt has no signal (see _select_post_structures below).
+_SIGNAL_REQUIRED_STRUCTURES = {
+    "a direct comparison (\"X is basically Y, and here's why\")",
+    "a quiet fact stated with minimal commentary",
+}
 
 POST_PERSONALIZATION_POOL = [
     "a personal reaction",
@@ -198,12 +213,28 @@ POST_PERSONALIZATION_POOL = [
 
 # Used instead of POST_PERSONALIZATION_POOL when there's no Signal to anchor a post (empty
 # signal pool) -- excludes options that presuppose a fact to be contrarian about, draw a
-# parallel to, or detail (see build_post_prompt's no-signal branch).
+# parallel to, or detail (see build_post_prompt's no-signal branch). "a 'still thinking about'
+# callback" stays available here even with no confirmed earlier post supplied -- unlike
+# _CALLBACK_STRUCTURE above, it's deliberately vague continuity language ("still thinking
+# about yesterday's--"), not a structural reference to specific earlier content, and the
+# prompt's own constraints already forbid inventing a specific past post to back it.
 _NO_SIGNAL_PERSONALIZATION_POOL = [
     "a personal reaction",
     "a \"still thinking about\" callback",
     "an open question to the reader",
 ]
+
+
+def _select_post_structures(signal: Optional[Signal], last_confirmed_post: Optional[str]) -> list[str]:
+    """Candidate structures for this generation, filtered to only what's actually available
+    (RC-108): no callback without a real earlier post to reference, and no structure that
+    presupposes a specific fact when there's no Signal to supply one. "a single observation"
+    and "a question posed outward to the timeline" are signal-agnostic and always remain, so
+    this never comes back empty."""
+    structures = [s for s in POST_STRUCTURE_POOL if s != _CALLBACK_STRUCTURE or last_confirmed_post]
+    if signal is None:
+        structures = [s for s in structures if s not in _SIGNAL_REQUIRED_STRUCTURES]
+    return structures
 
 # Short grounding note per Phase, drawn from VOICE_GUIDE.md's Phase table ("What TedKhao does
 # with it" column) -- gives the model the *content* framing, since Phase shapes what to post
@@ -296,7 +327,9 @@ def _format_post_examples(register: Register) -> str:
     return "\n\n".join(f'  "{example}"' for example in examples)
 
 
-def build_post_prompt(phase: Phase, register: Register, signal: Optional[Signal]) -> str:
+def build_post_prompt(phase: Phase, register: Register, signal: Optional[Signal],
+                       convergence_partner: Optional[Signal] = None,
+                       last_confirmed_post: Optional[str] = None) -> str:
     """Build the prompt for an original post, driven by a Phase + selected Signal instead of
     an incoming post (see persona.state.select_phase_register_and_signal).
 
@@ -305,8 +338,22 @@ def build_post_prompt(phase: Phase, register: Register, signal: Optional[Signal]
     see CLAUDE.md's Phase 2 note that the personalization knob has already produced at least
     one fabricated (non-factual) detail with a real signal to work from; with no signal at all,
     that risk is worse, not better.
+
+    convergence_partner is the second signal of the rhyming pair (RC-108) and is required
+    whenever phase is Convergence: that phase's entire premise is two signals rhyming, so a
+    prompt built from only one of them has nothing to actually connect. select_phase_
+    register_and_signal always supplies it for Convergence -- seeing None here means that
+    contract broke upstream, so this raises rather than silently emitting a broken Convergence
+    prompt (callers should treat that as a reason to skip the phase, not proceed).
+
+    last_confirmed_post is the most recently confirmed original post's text (persona.memory.
+    PersonaMemory.last_confirmed_post), used only to gate and ground the "callback to an
+    earlier post" structure -- see _select_post_structures.
     """
-    structure = random.choice(POST_STRUCTURE_POOL)
+    if phase is Phase.CONVERGENCE and convergence_partner is None:
+        raise ValueError("Convergence phase requires a convergence_partner signal")
+
+    structure = random.choice(_select_post_structures(signal, last_confirmed_post))
     personalization = random.choice(
         _NO_SIGNAL_PERSONALIZATION_POOL if signal is None else POST_PERSONALIZATION_POOL
     )
@@ -314,7 +361,15 @@ def build_post_prompt(phase: Phase, register: Register, signal: Optional[Signal]
     examples = _format_post_examples(register)
     phase_note = POST_PHASE_NOTE[phase]
 
-    if signal is None:
+    if phase is Phase.CONVERGENCE:
+        signal_block = f"""Today's two rhyming signals:
+  First ({signal.domain}, via {signal.source}):
+    Title: {signal.title}
+    Summary: {signal.summary or '(no summary provided)'}
+  Second ({convergence_partner.domain}, via {convergence_partner.source}):
+    Title: {convergence_partner.title}
+    Summary: {convergence_partner.summary or '(no summary provided)'}"""
+    elif signal is None:
         signal_block = (
             "No specific external signal today -- the pool came back empty. Do not invent a "
             "specific date, name, number, or fact to sound anchored; write from genuine "
@@ -324,6 +379,13 @@ def build_post_prompt(phase: Phase, register: Register, signal: Optional[Signal]
         signal_block = f"""Today's signal ({signal.domain}, via {signal.source}):
   Title: {signal.title}
   Summary: {signal.summary or '(no summary provided)'}"""
+
+    if last_confirmed_post:
+        signal_block += f"""
+
+Your most recent confirmed post (reference it only if "a callback to an earlier post" or the \
+"still thinking about" personalization genuinely fits -- otherwise ignore it):
+  "{last_confirmed_post}\""""
 
     return f"""{PERSONA_DESCRIPTION}
 

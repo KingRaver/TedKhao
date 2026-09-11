@@ -8,7 +8,7 @@ from engagement.reply_handler import _generate_nonempty, _sentence_aware_truncat
 from llm_provider import GenerationError, LLMProvider
 from persona.memory import PersonaMemory
 from persona.prompts import build_post_prompt, build_shorten_prompt
-from persona.state import select_phase_register_and_signal
+from persona.state import Phase, select_phase_register_and_signal
 from signals.base import Signal, content_fingerprint, source_key
 import config
 
@@ -38,11 +38,23 @@ def generate_post(signals: list[Signal], llm_provider: LLMProvider, memory: Pers
             "skipped": "all_candidate_sources_recently_covered",
         }
 
-    phase, register, signal = select_phase_register_and_signal(
+    phase, register, signal, convergence_partner = select_phase_register_and_signal(
         eligible, memory.recent_phases, memory.recent_registers
     )
 
-    prompt = build_post_prompt(phase, register, signal)
+    if phase == Phase.CONVERGENCE and convergence_partner is None:
+        # Defensive: select_phase_register_and_signal always pairs a partner with Convergence
+        # (RC-108); if that contract is ever violated, skip rather than let build_post_prompt's
+        # own guard raise mid-cycle -- "disable the phase" gracefully instead of crashing the
+        # whole post cycle, matching RC-107's skip-over-silently-wrong-behavior precedent.
+        return {
+            "post_id": None, "publication_id": None, "post_text": None,
+            "phase": phase, "register": None, "signal": None,
+            "skipped": "convergence_missing_supporting_signal",
+        }
+
+    last_confirmed_post = memory.last_confirmed_post()
+    prompt = build_post_prompt(phase, register, signal, convergence_partner, last_confirmed_post)
     post_text = _generate_nonempty(
         llm_provider, prompt, max_tokens=250, temperature=0.9,
         attempts=config.POST_GENERATION_ATTEMPTS, label="post generation",
@@ -58,6 +70,7 @@ def generate_post(signals: list[Signal], llm_provider: LLMProvider, memory: Pers
         "phase": phase,
         "register": register,
         "signal": signal,
+        "convergence_partner": convergence_partner,
     }
 
 

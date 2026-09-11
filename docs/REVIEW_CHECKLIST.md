@@ -44,7 +44,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Verified | Claude | Phase 5 evidence below; `feat/phase-5-validate-output` |
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Verified | Claude | Phase 6 evidence below; `feat/phase-6-source-selection` |
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Verified | Claude | Phase 7 evidence below; `feat/phase-7-source-coverage` |
-| 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Planned | Unassigned | Pending |
+| 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Verified | Claude | Phase 8 evidence below; `feat/phase-8-evidence-backed-prompts` |
 | 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Planned | Unassigned | Pending |
 | 10 | RC-110 | High | Run integrated regression and controlled live validation | RC-101–RC-109 | Planned | Unassigned | Pending |
 
@@ -398,19 +398,68 @@ layering convention. Not deployed.
 
 Files: `src/persona/prompts.py`, state selection, memory queries, post handler, `VOICE_GUIDE.md`.
 
-- [ ] Pass both supporting signals for a Convergence prompt, or disable that phase until its
+- [x] Pass both supporting signals for a Convergence prompt, or disable that phase until its
       selection/context contract supports them.
-- [ ] Offer a specific callback only when a confirmed earlier post is supplied as context.
-- [ ] Remove thread-opening generation from the single-post workflow; full thread publishing
+- [x] Offer a specific callback only when a confirmed earlier post is supplied as context.
+- [x] Remove thread-opening generation from the single-post workflow; full thread publishing
       is deferred and requires its own tracked scope.
-- [ ] Ensure no-signal prompts cannot select structures that require unavailable facts or
+- [x] Ensure no-signal prompts cannot select structures that require unavailable facts or
       earlier posts; support an explicit skip when there is nothing grounded to publish.
-- [ ] Test prompt assembly for single-signal, convergence, callback, and empty-context cases.
-- [ ] Record model-backed voice trials separately from deterministic tests, identifying model,
+- [x] Test prompt assembly for single-signal, convergence, callback, and empty-context cases.
+- [x] Record model-backed voice trials separately from deterministic tests, identifying model,
       scenario, and factual/continuity issues. Prompt tests alone do not establish factual accuracy.
 
 Evidence required: prompt contract tests and a trial record. Existing voice-quality concerns
 remain open unless the recorded trials justify closing them.
+
+RC-108 verification (2026-09-11, working tree based on `e1183fb`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_prompt_grounding.py`
+checks alongside every existing offline check. `persona.state.select_phase_register_and_signal()`
+now returns a fourth value, `convergence_partner` -- the other signal of the rhyming pair,
+non-None exactly when `phase` is Convergence -- instead of silently discarding it: Convergence's
+whole premise is two signals rhyming, and the prior single-signal return gave
+`persona.prompts.build_post_prompt()` nothing to actually connect for that phase. `build_post_prompt()`
+gained `convergence_partner`/`last_confirmed_post` parameters: for Convergence it now renders both
+signals' title/summary/domain/source into the prompt and raises `ValueError` if `convergence_partner`
+is missing (a broken selection/context contract, not a case to silently degrade), and
+`engagement.post_handler.generate_post()` catches that same condition one layer up and returns an
+explicit `"skipped": "convergence_missing_supporting_signal"` result instead of letting the raise
+reach the middle of a post cycle -- verified directly by monkeypatching a broken selection. A new
+`_CALLBACK_STRUCTURE` ("a callback to an earlier post") is only offered by `_select_post_structures()`
+when `last_confirmed_post` is supplied; `database.get_last_confirmed_post()` +
+`persona.memory.PersonaMemory.last_confirmed_post()` (RC-108) query the most recently *confirmed*
+original post's text for this, so a callback only ever references a post that genuinely published,
+never a draft/attempted/uncertain one; when offered, the real confirmed text is embedded in the
+prompt so the model has something true to reference instead of inventing what "the earlier post"
+said -- verified across 60 seeds both that the structure is unreachable without a confirmed post
+and reachable-and-grounded with one, plus an end-to-end case that confirms a real post through
+`PersonaMemory` and asserts `generate_post()` passes its exact text through as context. Thread-opening
+("a short thread (2-4 posts)...") was removed from `POST_STRUCTURE_POOL` outright -- the single-post
+pipeline has no mechanism to publish the follow-up posts it would set up. `_SIGNAL_REQUIRED_STRUCTURES`
+(direct comparison, quiet fact) are now excluded whenever `signal is None`, alongside the callback
+gating above -- verified across 60 seeds that a no-signal, no-history prompt only ever selects
+"a single observation" or "a question posed outward to the timeline", that a real signal still
+makes the fact-requiring structures reachable, and that a confirmed post still makes a grounded
+callback reachable even on a no-signal day. `VOICE_GUIDE.md`'s structure-pool line and
+`docs/REVIEW_CHECKLIST.md`'s Phase 6 test file (`tests/manual_test_state_selection.py`) were updated
+for the new 4-tuple return (mechanical unpacking fix) and its existing Convergence test now also
+asserts a non-None, correctly-paired `convergence_partner` is surfaced.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured.
+Model-backed voice trial (2026-09-11, `deepseek-coder-v2:16b` via the already-downloaded local
+Ollama endpoint -- user-directed choice, no new model pulled, `ANTHROPIC_API_KEY` still empty):
+[docs/VOICE_TRIALS.md](VOICE_TRIALS.md). Real generations confirmed both RC-108 grounding fixes
+working as designed -- a Convergence post engaged with both supplied signals, and a callback
+generation (seed 3 of 8, against a real pre-confirmed earlier post) referenced that post's actual
+facts rather than inventing new ones -- but the empty-pool Quiet scenario still fabricated a
+specific, invented historical claim despite the prompt's explicit anti-fabrication instruction,
+reproducing (on a different model) the same open failure mode CLAUDE.md's Current Status already
+documents from Phase 2/4 testing. RC-108 fixed which *structures* a no-signal prompt can select,
+not whether the model reliably follows a "don't invent" instruction -- that gap is real and
+unresolved. Per this phase's own evidence requirement, **this trial does not justify closing
+CLAUDE.md's existing open voice-quality item**; it stays open. A separate factual-fidelity issue
+with a present (non-empty) signal was also observed and is out of this phase's scope -- recorded
+in docs/VOICE_TRIALS.md for whoever next investigates model-output accuracy. Not deployed.
 
 ## Phase 9: RC-109 — Per-operation failure handling
 
@@ -477,6 +526,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | 2026-09-11 | RC-105 | `feat/phase-5-validate-output` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_generation_validation.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Malformed/missing/null provider responses raise `GenerationError` (both providers); empty/malformed initial or shorten output is retried within bounded attempts and never persists a draft or holds a reply target; existing overlength truncation path still enforces the hard limit | Not deployed |
 | 2026-09-11 | RC-106 | `feat/phase-6-source-selection` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_state_selection.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `Signal.novelty_evidenced`, set by fetchers whose rank is real freshness/trending evidence (arxiv, hackernews) and withheld where it isn't (wikipedia_otd, met_museum, x_timeline); tie-breaking now uses a seeded random choice over tied signals instead of list order; Breakthrough requires `novelty_evidenced`; Convergence requires two different-domain high-novelty signals to share significant vocabulary. History-only and arts-only top-rank-1.0 pools no longer resolve to Breakthrough; unrelated cross-domain high-novelty signals no longer resolve to Convergence; both baseline-evidence regressions fixed | Not deployed |
 | 2026-09-11 | RC-107 | `feat/phase-7-source-coverage` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_source_coverage.py`, updated `tests/manual_test_publication.py` migration assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `signals.base.source_key()`/`content_fingerprint()`; schema version 2 adds `publications.source_url`/`source_fingerprint`, populated only for original posts; `database.get_covered_sources()` + `PersonaMemory.covered_source_keys()` (queried fresh per call, confirmed-within-`SOURCE_COVERAGE_WINDOW_HOURS` or held attempted/uncertain regardless of window, draft/failed never held); `generate_post()` filters the pool before selection and returns an explicit `"skipped": "all_candidate_sources_recently_covered"` result when every candidate is covered, without persisting anything; `bot.run_post_cycle()` handles the skip. Same-URL title changes (materially updated) become eligible again inside the window; legacy rows keep NULL source identity (not backfilled), matching RC-102 precedent | Not deployed |
+| 2026-09-11 | RC-108 | `feat/phase-8-evidence-backed-prompts` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_prompt_grounding.py`, updated `tests/manual_test_state_selection.py` unpacking + Convergence assertion); `venv/bin/python -m compileall -q src tests`; `git diff --check` | `select_phase_register_and_signal()` now returns `convergence_partner` (the other rhyming signal) instead of dropping it; `build_post_prompt()` grounds Convergence in both signals and raises if the partner is missing, `generate_post()` catches that and returns an explicit skip instead; `_CALLBACK_STRUCTURE` only offered when a real confirmed post (`database.get_last_confirmed_post`/`PersonaMemory.last_confirmed_post`) is supplied, and its actual text is embedded in the prompt when offered; fact-requiring structures excluded whenever there's no signal; thread-opening removed from `POST_STRUCTURE_POOL` entirely. Model trial recorded (`deepseek-coder-v2:16b`, real Ollama calls): Convergence and callback grounding both confirmed working; no-signal fabrication confirmed still unresolved -- see docs/VOICE_TRIALS.md | Not deployed |
 
 ## Decisions and change history
 

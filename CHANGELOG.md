@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-108: `persona.state.select_phase_register_and_signal()` now returns a `convergence_partner`
+  signal (the other half of the rhyming pair) instead of silently dropping it, and
+  `persona.prompts.build_post_prompt()` grounds a Convergence prompt in both signals -- raising
+  if the partner is missing rather than emitting a half-grounded prompt, which
+  `engagement.post_handler.generate_post()` now catches one layer up and turns into an explicit
+  `"skipped": "convergence_missing_supporting_signal"` result instead of crashing the post
+  cycle. New `database.get_last_confirmed_post()`/`PersonaMemory.last_confirmed_post()` supply
+  the most recently *confirmed* original post's text, which gates a new "callback to an earlier
+  post" structure -- only offered, and only ever grounded in real (never fabricated) content,
+  when that post exists; `POST_STRUCTURE_POOL`'s comparison/quiet-fact options are likewise
+  excluded whenever there's no signal to supply the fact they'd need. Thread-opening ("a short
+  thread (2-4 posts)...") was removed from `POST_STRUCTURE_POOL` outright -- the single-post
+  pipeline has no way to publish the follow-up posts it would set up; full thread publishing is
+  deferred to its own tracked scope. New `tests/manual_test_prompt_grounding.py` covers
+  Convergence grounding/contract-violation handling, callback reachability with and without a
+  confirmed post, no-signal structure restriction, and an end-to-end confirmed-history case;
+  wired into `tests/run_offline.py`. `VOICE_GUIDE.md`'s structure-pool section updated to match.
+  New `docs/VOICE_TRIALS.md` records a model-backed trial (`deepseek-coder-v2:16b`, real Ollama
+  calls): Convergence and callback grounding both worked as designed, but the no-signal path
+  still fabricated a specific historical claim despite its explicit anti-fabrication
+  instruction -- `CLAUDE.md`'s existing open voice-quality item is reconfirmed, not resolved.
 - RC-107: `signals.base` gained `source_key()` (canonical URL, falling back to
   `"<source>:<title>"` for a source that doesn't set one) and `content_fingerprint()`
   (normalized title). Schema version 2 adds `publications.source_url`/`source_fingerprint`,

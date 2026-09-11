@@ -107,6 +107,7 @@ def run_review(db_path: str) -> None:
     for scenario_name, signals in SCENARIOS:
         result = generate_post(signals, provider, memory)
         phase, register, signal = result["phase"], result["register"], result["signal"]
+        convergence_partner = result.get("convergence_partner")
         post_text = result["post_text"]
 
         print("=" * 70)
@@ -116,6 +117,9 @@ def run_review(db_path: str) -> None:
             print(f"  signal: [{signal.source}/{signal.domain}] {signal.title}")
         else:
             print("  signal: none (empty pool)")
+        if convergence_partner:
+            print(f"  convergence partner: [{convergence_partner.source}/{convergence_partner.domain}] "
+                  f"{convergence_partner.title}")
         print(f"POST ({len(post_text)} chars):")
         print(f"  {post_text}")
         print()
