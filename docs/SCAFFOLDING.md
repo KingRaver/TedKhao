@@ -35,17 +35,29 @@ Use with `/phase-runner` to implement one phase at a time, verified against real
       (non-factual) anecdotes on at least one local model. Needs more trials, possibly across
       more than one model, before calling this phase actually done.
 
-## Phase 3 — Signal Ingestion ⬜ not started
+## Phase 3 — Signal Ingestion ✅ done
 
-- [ ] `src/signals/base.py` — common `Signal` dataclass + `fetch()` interface
-- [ ] `src/signals/arxiv_feed.py` — technology domain
-- [ ] `src/signals/history_today.py` — Wikipedia/Wikidata "On this day"
-- [ ] `src/signals/hackernews_feed.py` — technology domain (trending discussion)
-- [ ] `src/signals/arts_feed.py` — Met/Rijksmuseum/Smithsonian open APIs
-- [ ] Signal-pool scoring — the original-post equivalent of `select_register_for_reply()`,
-      i.e. a function that takes the day's fetched signals and picks a Phase + Register +
-      which signal to write about. Doesn't exist yet even as a stub — `state.py` currently
-      only handles the reply case.
+- [x] `src/signals/base.py` — common `Signal` dataclass + `fetch()` interface
+- [x] `src/signals/arxiv_feed.py` — technology domain (cs.AI/cs.CL/cs.LG, arXiv Atom API)
+- [x] `src/signals/history_today.py` — Wikipedia "On this day" (REST API, history domain)
+- [x] `src/signals/hackernews_feed.py` — technology domain (trending discussion, Firebase API)
+- [x] `src/signals/arts_feed.py` — arts domain, Met Museum Open Access API only for now.
+      Rijksmuseum and Smithsonian (also named in `docs/SPEC.md` for this domain) both need a
+      registered API key that isn't in `.env` yet — add a sibling module following the same
+      `fetch()` shape once those keys land, per CLAUDE.md's rule against asking for
+      credentials in chat.
+- [x] Signal-pool scoring — `select_phase_register_and_signal()` in `src/persona/state.py`,
+      the original-post equivalent of `select_register_for_reply()`. First-pass heuristic
+      over structural pool properties (novelty-score spread across domains, top signal's
+      source), not semantic content. Contested phase is intentionally unreachable from this
+      heuristic — detecting a live disagreement needs real topic/sentiment analysis the pool
+      doesn't carry yet; the exact scoring formula remains the open question tracked in
+      `docs/SPEC.md`.
+
+All four sources verified live (real API calls, not mocked) plus the pool-scoring function,
+including its empty-pool edge case — see smoke test run during this phase. No automated
+`pytest` suite exists yet (that's Phase 9); this phase's own verification was a manual live
+run, same spirit as Phase 2's `tests/manual_test_replies.py`.
 
 ## Phase 4 — Original Post Generation ⬜ not started
 

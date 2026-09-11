@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not yet started.
 - `docs/RESEARCH_NOTES.md`: source-referenced (file path + line number) findings from the
   `defi`/`karma` architecture research that `docs/SPEC.md`'s design decisions are drawn from.
+- Phase 3 (Signal Ingestion): `src/signals/base.py` (`Signal` dataclass + shared
+  `rank_novelty()` helper), and four working source modules -- `arxiv_feed.py` (cs.AI/cs.CL/
+  cs.LG via arXiv's Atom API), `history_today.py` (Wikipedia "On this day" REST API),
+  `hackernews_feed.py` (top stories via the HN Firebase API), and `arts_feed.py` (Met Museum
+  Open Access API only -- Rijksmuseum/Smithsonian need API keys not yet in `.env`). Also
+  `select_phase_register_and_signal()` in `src/persona/state.py`, the original-post
+  equivalent of `select_register_for_reply()`: scores a fetched signal pool into a Phase +
+  Register + which Signal to write about. All four sources and the scoring function verified
+  against live API calls.
 
 ### Changed
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
@@ -29,11 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the prompt so generation naturally leaves margin.
 
 ### Planned
-- Signal ingestion modules (arXiv, Wikipedia "On this day", Hacker News, museum APIs)
-- State engine (Register + Phase classification)
-- Voice bank content for all 8 registers
-- Prompt engine (tone/structure/personalization knobs)
-- LLM provider abstraction (Anthropic adapter + OpenAI-compatible/local adapter)
+- Original post generation (`build_post_prompt()`, per-Register few-shot examples, manual
+  test harness) -- Phase 4
 - X/Twitter integration (Selenium posting + timeline scraping + reply handling)
 - SQLite schema and database layer
 
