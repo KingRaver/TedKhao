@@ -59,6 +59,8 @@ tedkhao/
 ├── logs/                          # Application logs (gitignored)
 │
 └── tests/
+    ├── run_offline.py             # RC-101 offline persistence/cycle/isolation checks
+    ├── review_database.py         # Temporary or explicitly selected voice-review storage
     ├── test_state.py              # Register/Phase classification tests
     ├── test_voice_bank.py
     ├── test_prompts.py

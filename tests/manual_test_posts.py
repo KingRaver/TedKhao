@@ -1,27 +1,20 @@
 """Manual test harness: run the real post-generation path against fake signal pools and print
 the output for human review against VOICE_GUIDE.md.
 
-Not an automated pytest suite -- this is meant to be read by a person deciding whether
-TedKhao's original-post voice is working, before any of this touches a real timeline. Mirrors
-tests/manual_test_replies.py's spirit; there's no engagement/post_handler.py yet (that pipeline
-gets wired together in bot.py, Phase 7), so this script does the same analyze -> select ->
-build prompt -> generate -> enforce length steps inline. Run with:
-
-    python tests/manual_test_posts.py
+Model integration harness, separate from the offline regression command.
+Run: python tests/manual_test_posts.py [--review-db PATH]
+Defaults to a temporary database removed after review.
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from engagement.reply_handler import _sentence_aware_truncate  # noqa: E402
+from engagement.post_handler import generate_post  # noqa: E402
 from llm_provider import get_provider  # noqa: E402
 from persona.memory import PersonaMemory  # noqa: E402
-from persona.prompts import build_post_prompt, build_shorten_prompt  # noqa: E402
-from persona.state import select_phase_register_and_signal  # noqa: E402
 from signals.base import Signal  # noqa: E402
-import config  # noqa: E402
-import database  # noqa: E402
+from review_database import review_database  # noqa: E402
 
 # Each scenario is its own fake signal pool, chosen to land on a different Phase via
 # select_phase_register_and_signal's heuristic (src/persona/state.py). Contested is
@@ -97,25 +90,7 @@ SCENARIOS: list[tuple[str, list[Signal]]] = [
 ]
 
 
-def _ensure_post_length(text: str, provider) -> str:
-    """Same shorten-then-truncate shape as engagement.reply_handler._ensure_length, scaled to
-    POST_MAX_CHARS. Kept local to this test harness rather than duplicated as a src/ module --
-    there's no post_handler.py yet for it to live in (that's Phase 7's bot.py orchestration).
-    """
-    text = text.strip()
-    if len(text) <= config.POST_MAX_CHARS:
-        return text
-
-    for _ in range(config.POST_SHORTEN_ATTEMPTS):
-        shorten_prompt = build_shorten_prompt(text, config.POST_MAX_CHARS)
-        text = provider.generate(shorten_prompt, max_tokens=150, temperature=0.5).strip()
-        if len(text) <= config.POST_MAX_CHARS:
-            return text
-
-    return _sentence_aware_truncate(text, config.POST_MAX_CHARS)
-
-
-def main() -> None:
+def run_review(db_path: str) -> None:
     try:
         provider = get_provider()
     except ValueError as e:
@@ -123,30 +98,12 @@ def main() -> None:
         print("Copy .env.example to .env and fill in ANTHROPIC_API_KEY, then re-run.\n")
         return
 
-    memory = PersonaMemory()
+    memory = PersonaMemory(db_path=db_path)
 
     for scenario_name, signals in SCENARIOS:
-        phase, register, signal = select_phase_register_and_signal(
-            signals, memory.recent_phases, memory.recent_registers
-        )
-
-        prompt = build_post_prompt(phase, register, signal)
-        post_text = provider.generate(prompt, max_tokens=250, temperature=0.9)
-        post_text = _ensure_post_length(post_text, provider)
-
-        # Persist the triggering signal first (if any) so posts.signal_id / state_history's
-        # triggering_signal_id reference a real row. No engagement/post_handler.py exists yet
-        # to own this wiring (deferred to Phase 7's bot.py orchestration, per
-        # docs/SCAFFOLDING.md), so this harness does the same inline
-        # analyze -> select -> build prompt -> generate -> persist steps it already does for
-        # generation, rather than duplicating a module that doesn't exist yet.
-        signal_id = None
-        if signal is not None:
-            signal_id = database.insert_signal(signal)
-            database.mark_signal_used(signal_id)
-
-        memory.record_state(register, phase, triggering_signal_id=signal_id)
-        database.insert_post(post_text, register.value, phase.value, signal_id=signal_id)
+        result = generate_post(signals, provider, memory)
+        phase, register, signal = result["phase"], result["register"], result["signal"]
+        post_text = result["post_text"]
 
         print("=" * 70)
         print(f"SCENARIO: {scenario_name}")
@@ -164,6 +121,11 @@ def main() -> None:
           f"{[p.value for p in memory.recent_phases]}")
     print(f"Recent registers used (anti-repetition check): "
           f"{[r.value for r in memory.recent_registers]}")
+
+
+def main(argv=None) -> None:
+    with review_database(argv) as db_path:
+        run_review(db_path)
 
 
 if __name__ == "__main__":

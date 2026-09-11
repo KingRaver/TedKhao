@@ -4,7 +4,7 @@ writes) -- the core claim of Phase 5. Also exercises engagement.reply_handler.ge
 against a fake, non-network LLMProvider so the reply_handler -> database wiring is proven
 without needing a live API key.
 
-Uses plain asserts (not pytest -- no automated suite exists yet, that's Phase 9) so failures
+Included in `venv/bin/python tests/run_offline.py` (RC-101). Uses plain asserts so failures
 are loud and specific. Run with:
 
     python tests/manual_test_persistence.py

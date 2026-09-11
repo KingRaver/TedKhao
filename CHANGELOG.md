@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-101: isolated voice-review databases with explicit `--review-db` retention, production
+  `generate_post()` reuse, and `tests/run_offline.py` covering persistence, cycles, and
+  database isolation without credentials, network access, or browser launches.
 - `docs/REVIEW_CHECKLIST.md`: actionable review remediation tracker RC-101–RC-110 covering
   all eight review findings, persistent browser/authentication handling, dependencies,
   acceptance criteria, baseline evidence, and separate offline/live verification. Linked

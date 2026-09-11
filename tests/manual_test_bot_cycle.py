@@ -3,7 +3,7 @@ non-network LLMProvider and a temp database, same spirit as tests/manual_test_pe
 for Phase 5. Proves the signals -> persona -> engagement -> database wiring bot.py coordinates
 without needing a live API key or a real X session.
 
-Uses plain asserts (not pytest -- no automated suite exists yet, that's Phase 9). Run with:
+Included in `venv/bin/python tests/run_offline.py` (RC-101). Uses plain asserts. Run with:
 
     python tests/manual_test_bot_cycle.py
 """
