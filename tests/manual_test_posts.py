@@ -21,6 +21,7 @@ from persona.prompts import build_post_prompt, build_shorten_prompt  # noqa: E40
 from persona.state import select_phase_register_and_signal  # noqa: E402
 from signals.base import Signal  # noqa: E402
 import config  # noqa: E402
+import database  # noqa: E402
 
 # Each scenario is its own fake signal pool, chosen to land on a different Phase via
 # select_phase_register_and_signal's heuristic (src/persona/state.py). Contested is
@@ -133,8 +134,19 @@ def main() -> None:
         post_text = provider.generate(prompt, max_tokens=250, temperature=0.9)
         post_text = _ensure_post_length(post_text, provider)
 
-        memory.record_phase(phase)
-        memory.record_register(register)
+        # Persist the triggering signal first (if any) so posts.signal_id / state_history's
+        # triggering_signal_id reference a real row. No engagement/post_handler.py exists yet
+        # to own this wiring (deferred to Phase 7's bot.py orchestration, per
+        # docs/SCAFFOLDING.md), so this harness does the same inline
+        # analyze -> select -> build prompt -> generate -> persist steps it already does for
+        # generation, rather than duplicating a module that doesn't exist yet.
+        signal_id = None
+        if signal is not None:
+            signal_id = database.insert_signal(signal)
+            database.mark_signal_used(signal_id)
+
+        memory.record_state(register, phase, triggering_signal_id=signal_id)
+        database.insert_post(post_text, register.value, phase.value, signal_id=signal_id)
 
         print("=" * 70)
         print(f"SCENARIO: {scenario_name}")

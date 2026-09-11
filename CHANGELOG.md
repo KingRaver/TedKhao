@@ -33,6 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per reachable Phase, plus an empty pool), verified with a live run against the local
   `deepseek-coder-v2:16b`.
 
+- Phase 5 (Persistence): `src/database.py` -- SQLite schema (`signals`, `state_history`,
+  `posts`, `replied_posts`) plus a functional access layer (`init_db()`, insert/query
+  functions). `state_history.phase` is nullable, deviating from the `docs/SPEC.md` snippet --
+  the reply path only ever produces a Register (no Phase concept for a reply), so a
+  reply-triggered row has no phase to record; `docs/SPEC.md` updated to match. `PersonaMemory`
+  (`src/persona/memory.py`) now loads its anti-repetition state from the database on
+  construction and gains `record_state()`/`record_reply()`, which update the in-memory lists
+  and persist in one call. `engagement/reply_handler.py`'s `generate_reply()` now persists
+  every reply. `tests/manual_test_posts.py` persists the triggering `Signal` and generated
+  `Post` directly (no `post_handler.py` yet -- still Phase 7's job). New
+  `tests/manual_test_persistence.py`: plain-assert harness proving a fresh `PersonaMemory`
+  instance actually sees a prior instance's writes (simulated restart), against a temp DB and
+  a fake, no-network `LLMProvider`. Verified both by that harness and by live runs of
+  `manual_test_replies.py`/`manual_test_posts.py` against `deepseek-coder-v2:16b`, inspecting
+  the resulting SQLite file directly.
+
 ### Changed
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
   stale "no code written yet" status, added local-model testing notes (`gemma4:12b` and
@@ -47,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the prompt so generation naturally leaves margin.
 
 ### Planned
-- SQLite schema and database layer (Phase 5)
 - X/Twitter integration (Selenium posting + timeline scraping + reply handling) (Phase 6)
 
 ## [0.1.0] - 2026-09-11
