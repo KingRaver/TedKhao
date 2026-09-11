@@ -67,6 +67,10 @@ tedkhao/
 
 ## Design notes
 
+Review remediation is tracked in [REVIEW_CHECKLIST.md](REVIEW_CHECKLIST.md), with work IDs,
+dependencies, acceptance checks, and verification evidence. [SCAFFOLDING.md](SCAFFOLDING.md)
+remains the historical build-phase tracker.
+
 - **`persona/` is the reusable core.** If TedKhao's domain ever changed again, this is the
   directory that should need the least rewriting — only `voice_bank.py`'s content and
   `state.py`'s taxonomy are domain-specific; the *mechanism* (score signals → pick
