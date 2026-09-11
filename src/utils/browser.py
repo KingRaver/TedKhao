@@ -24,6 +24,7 @@ which the persisted profile keeps the session alive for subsequent headless runs
 """
 import logging
 import os
+from dataclasses import dataclass
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -53,6 +54,14 @@ _LOGIN_BUTTON = (By.CSS_SELECTOR, '[data-testid="LoginForm_Login_Button"]')
 _SIDENAV_ACCOUNT = (By.CSS_SELECTOR, '[data-testid="SideNav_AccountSwitcher_Button"]')
 _COMPOSE_TEXTAREA = (By.CSS_SELECTOR, '[data-testid="tweetTextarea_0"]')
 _POST_BUTTON = (By.CSS_SELECTOR, '[data-testid="tweetButtonInline"]')
+# RC-104: evidence a submission was confirmed or rejected. A "sent" toast carries a permalink
+# to the new post; an error/confirmation-sheet dialog is X's shape for a rejected submission
+# (duplicate content, restriction, rate limit). Neither is a stable public contract -- see the
+# module docstring's note on X's DOM -- so a real-account check remains deferred to RC-110.
+_TOAST = (By.CSS_SELECTOR, '[data-testid="toast"]')
+_TOAST_STATUS_LINK = (By.CSS_SELECTOR, '[data-testid="toast"] a[href*="/status/"]')
+_ERROR_DIALOG = (By.CSS_SELECTOR, '[data-testid="confirmationSheetDialog"], [data-testid="sheetDialog"]')
+_SUBMIT_CONFIRM_TIMEOUT_SECONDS = 20
 
 
 def get_driver(headless: bool = True) -> webdriver.Chrome:
@@ -125,10 +134,62 @@ def ensure_logged_in(driver: webdriver.Chrome) -> None:
         log_in(driver)
 
 
-def post_tweet(driver: webdriver.Chrome, text: str) -> None:
-    """Composes and publishes a new top-level post from the home timeline's compose box.
-    Caller is responsible for calling ensure_logged_in() first and for enforcing length
-    limits (config.POST_MAX_CHARS) before calling this -- it does not re-check either."""
+@dataclass(frozen=True)
+class PublicationOutcome:
+    """What actually happened to a submitted post/reply, per RC-104: a button click alone is
+    never evidence of success. `status` is one of 'confirmed', 'failed', or 'uncertain' --
+    engagement.publication.publish() persists exactly that status (re-exported from there as
+    `engagement.publication.PublicationOutcome` for existing callers/tests). 'confirmed'
+    requires external_id or external_url; a timeout or ambiguous DOM state after submission
+    must report 'uncertain', never 'confirmed' or 'failed', since neither is known."""
+    status: str
+    external_id: str | None = None
+    external_url: str | None = None
+    detail: str | None = None
+
+
+def _await_submission_outcome(
+    driver: webdriver.Chrome, timeout: float = _SUBMIT_CONFIRM_TIMEOUT_SECONDS
+) -> PublicationOutcome:
+    """Bounded wait, after a post/reply submission click, for X to show confirmation (a toast
+    linking the new post's permalink) or rejection (an error/confirmation dialog). A timeout
+    -- or a toast with no permalink, which is not proof of success -- resolves to 'uncertain'
+    rather than guessing; RC-104 requires a genuine timeout after submission to stay ambiguous
+    until reconciliation, not be treated as success or failure."""
+    try:
+        WebDriverWait(driver, timeout).until(
+            lambda d: d.find_elements(*_TOAST) or d.find_elements(*_ERROR_DIALOG)
+        )
+    except TimeoutException:
+        return PublicationOutcome(
+            'uncertain',
+            detail=f'No confirmation or rejection observed within {timeout}s of submission',
+        )
+
+    status_links = driver.find_elements(*_TOAST_STATUS_LINK)
+    if status_links:
+        href = status_links[0].get_attribute('href') or ''
+        external_id = href.rstrip('/').rsplit('/', 1)[-1] or None
+        return PublicationOutcome('confirmed', external_id=external_id, external_url=href or None)
+
+    error_dialogs = driver.find_elements(*_ERROR_DIALOG)
+    if error_dialogs:
+        return PublicationOutcome('failed', detail=error_dialogs[0].text or 'X rejected the submission')
+
+    toasts = driver.find_elements(*_TOAST)
+    if toasts:
+        return PublicationOutcome(
+            'uncertain', detail=toasts[0].text or 'Toast appeared with no confirmation evidence'
+        )
+    return PublicationOutcome('uncertain', detail='No confirmation or rejection evidence found')
+
+
+def post_tweet(driver: webdriver.Chrome, text: str) -> PublicationOutcome:
+    """Composes and publishes a new top-level post from the home timeline's compose box, then
+    observes X's response to determine the real outcome (RC-104) -- see
+    _await_submission_outcome(). Caller is responsible for calling ensure_logged_in() first and
+    for enforcing length limits (config.POST_MAX_CHARS) before calling this -- it does not
+    re-check either."""
     driver.get(HOME_URL)
     textarea = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable(_COMPOSE_TEXTAREA)
@@ -141,9 +202,12 @@ def post_tweet(driver: webdriver.Chrome, text: str) -> None:
     )
     post_button.click()
 
+    return _await_submission_outcome(driver)
 
-def post_reply(driver: webdriver.Chrome, target_post_url: str, text: str) -> None:
-    """Replies to the post at target_post_url. Same caller responsibilities as post_tweet()."""
+
+def post_reply(driver: webdriver.Chrome, target_post_url: str, text: str) -> PublicationOutcome:
+    """Replies to the post at target_post_url. Same caller responsibilities and confirmation
+    behavior (RC-104) as post_tweet()."""
     driver.get(target_post_url)
     textarea = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable(_COMPOSE_TEXTAREA)
@@ -155,6 +219,8 @@ def post_reply(driver: webdriver.Chrome, target_post_url: str, text: str) -> Non
         EC.element_to_be_clickable(_POST_BUTTON)
     )
     post_button.click()
+
+    return _await_submission_outcome(driver)
 
 
 class SessionPaused(Exception):

@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-104: `utils.browser.post_tweet()`/`post_reply()` now observe X's actual response after
+  the submit click instead of treating a completed click as success --
+  `_await_submission_outcome()` waits (bounded) for either a "sent" toast carrying the new
+  post's status permalink (`confirmed`, with `external_id`/`external_url` parsed from it) or
+  an error/confirmation dialog (`failed`, with its message as `detail`); a toast with no
+  permalink or no evidence at all within the bound resolves to `uncertain`, never `confirmed`
+  or `failed`, and an exception during/after the click propagates untouched rather than being
+  reported as any outcome -- `driver.quit()` is never called, so the shared `BrowserSession`
+  (RC-103) stays open. `PublicationOutcome` moved from `engagement/publication.py` into
+  `utils/browser.py` (the layer that now determines it) and is re-exported from
+  `engagement.publication` for existing callers. New `tests/manual_test_browser_confirmation.py`
+  (fake-driver, no real Chrome) covers success, rejection, timeout, and crash-after-click;
+  wired into `tests/run_offline.py`. Real X selectors/confirmation behavior against the live
+  DOM remain unverified pending RC-110's explicitly authorized live check.
 - RC-103: `utils.browser.BrowserSession`, the single ownership boundary for one Chrome
   WebDriver across a whole `bot.py` process -- launched once, reused by timeline scraping,
   posting, and replies, and closed only on deliberate shutdown or a diagnosed crash

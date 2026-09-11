@@ -46,8 +46,10 @@ def main():
                  patch.object(llm_provider, 'get_provider', forbidden):
                 import manual_test_publication as publication
                 import manual_test_browser_session as browser_session
+                import manual_test_browser_confirmation as browser_confirmation
                 publication.main()
                 browser_session.main()
+                browser_confirmation.main()
                 persistence.main()
                 cycle.main()
                 for harness, table, expected in ((posts, 'posts', len(posts.SCENARIOS)),
