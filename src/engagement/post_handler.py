@@ -9,7 +9,7 @@ from llm_provider import GenerationError, LLMProvider
 from persona.memory import PersonaMemory
 from persona.prompts import build_post_prompt, build_shorten_prompt
 from persona.state import select_phase_register_and_signal
-from signals.base import Signal
+from signals.base import Signal, content_fingerprint, source_key
 import config
 
 
@@ -22,10 +22,24 @@ def generate_post(signals: list[Signal], llm_provider: LLMProvider, memory: Pers
         memory: shared PersonaMemory instance for anti-repetition
 
     Returns:
-        dict with the generated post plus the phase/register/signal used, for inspection.
+        dict with the generated post plus the phase/register/signal used, for inspection --
+        or, when signals was nonempty but every candidate is recently covered (RC-107), an
+        explicit no-post result ("skipped" key set, everything else None) instead of silently
+        reusing an already-posted source. An originally empty pool still reaches
+        select_phase_register_and_signal() and returns its existing Phase.QUIET/no-signal
+        result, distinct from this skip.
     """
+    covered = memory.covered_source_keys()
+    eligible = [s for s in signals if (source_key(s), content_fingerprint(s)) not in covered]
+    if signals and not eligible:
+        return {
+            "post_id": None, "publication_id": None, "post_text": None,
+            "phase": None, "register": None, "signal": None,
+            "skipped": "all_candidate_sources_recently_covered",
+        }
+
     phase, register, signal = select_phase_register_and_signal(
-        signals, memory.recent_phases, memory.recent_registers
+        eligible, memory.recent_phases, memory.recent_registers
     )
 
     prompt = build_post_prompt(phase, register, signal)

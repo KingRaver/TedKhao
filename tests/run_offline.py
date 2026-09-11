@@ -39,6 +39,7 @@ def main():
             import manual_test_bot_cycle as cycle
             import manual_test_generation_validation as generation_validation
             import manual_test_state_selection as state_selection
+            import manual_test_source_coverage as source_coverage
             import manual_test_posts as posts
             import manual_test_replies as replies
             import llm_provider
@@ -56,6 +57,7 @@ def main():
                 cycle.main()
                 generation_validation.main()
                 state_selection.main()
+                source_coverage.main()
                 for harness, table, expected in ((posts, 'posts', len(posts.SCENARIOS)),
                                                   (replies, 'publications', len(replies.FAKE_POSTS))):
                     paths = []

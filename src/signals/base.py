@@ -29,6 +29,27 @@ class Signal:
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+def source_key(signal: Signal) -> str:
+    """Stable identity for where a signal came from, for recent-coverage tracking (RC-107).
+
+    Prefers the canonical URL. The interface (this module's docstring) doesn't require every
+    source to set one, so a source that doesn't falls back to "<source>:<title>" -- still
+    stable across repeated fetches of the same item, just coarser than a real URL."""
+    return signal.url or f"{signal.source}:{signal.title}"
+
+
+def content_fingerprint(signal: Signal) -> str:
+    """Coarse content identity for a signal, alongside source_key's origin identity (RC-107).
+
+    A signal whose title changed since it was last covered is treated as materially updated
+    and becomes eligible again even inside the coverage window -- title is what every
+    signals/*.py source refreshes when the underlying item changes (an edited HN title, a
+    corrected summary line), so comparing it is a cheap, deterministic proxy for "this isn't
+    the same thing already covered," in the same spirit as persona.state's vocabulary-overlap
+    "rhyme" check rather than real diffing."""
+    return signal.title.strip().lower()
+
+
 def rank_novelty(rank: int, total: int) -> float:
     """Newest/highest-ranked-first index -> a 0-1 novelty placeholder score.
 
