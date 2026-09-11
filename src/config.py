@@ -6,6 +6,8 @@ load_dotenv()
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
 
+DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join("data", "tedkhao.db"))
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 

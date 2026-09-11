@@ -98,12 +98,39 @@ Rolls into Phase 2's open item rather than blocking Phase 4: the prompt-construc
 itself is built and verified working; whether it reliably produces voice-quality, non-fabricated
 output is the pre-existing cross-cutting open question, not something introduced by this phase.
 
-## Phase 5 — Persistence ⬜ not started
+## Phase 5 — Persistence ✅ done
 
-- [ ] `src/database.py` — SQLite schema from `docs/SPEC.md` (`signals`, `state_history`,
-      `posts`, `replied_posts` tables)
-- [ ] Wire `PersonaMemory` to persist across restarts instead of in-process-only
-- [ ] Wire `reply_handler`/post-generation to log to `posts` / `replied_posts`
+- [x] `src/database.py` — SQLite schema from `docs/SPEC.md` (`signals`, `state_history`,
+      `posts`, `replied_posts` tables). One deliberate deviation from the SPEC.md snippet:
+      `state_history.phase` is nullable, not `NOT NULL` — the reply path
+      (`select_register_for_reply`) only ever produces a Register, with no Phase concept for a
+      reply, so a reply-triggered row has no phase to record. The post-generation path
+      (`select_phase_register_and_signal`) always has both and populates phase normally. See
+      `docs/SPEC.md`'s Data Models section, updated to match.
+- [x] Wire `PersonaMemory` to persist across restarts instead of in-process-only —
+      `persona/memory.py` now loads `recent_registers`/`recent_phases`/`replied_post_ids` from
+      the database on construction. New `record_state()`/`record_reply()` methods update the
+      in-memory anti-repetition lists *and* write through to `state_history`/`replied_posts` in
+      one call; the old `record_register()`/`record_phase()`/`mark_replied()` primitives remain
+      for in-memory-only use.
+- [x] Wire `reply_handler`/post-generation to log to `posts` / `replied_posts` —
+      `engagement/reply_handler.py`'s `generate_reply()` now calls `memory.record_state()` +
+      `memory.record_reply()`. No `engagement/post_handler.py` exists yet (still deferred to
+      Phase 7's `bot.py` orchestration, per Phase 4's notes above), so
+      `tests/manual_test_posts.py` — the harness that already inlines the post-generation
+      pipeline for the same reason — was extended to persist the triggering `Signal` and the
+      generated `Post` via `database.py` directly.
+
+Verified with a live run against the locally-configured `deepseek-coder-v2:16b` (same setup as
+Phase 4): `tests/manual_test_replies.py`'s 6 fake posts and `tests/manual_test_posts.py`'s 6
+scenarios both ran end-to-end and were inspected directly in the resulting SQLite file —
+`signals` rows got `used_at` set, `posts.signal_id` correctly referenced the triggering signal,
+`state_history` correctly left `phase` NULL for reply-path rows and populated it for
+post-path rows, and a freshly-constructed `PersonaMemory()` (simulating a process restart)
+loaded the prior run's `recent_registers`/`replied_post_ids` correctly. A separate
+`tests/manual_test_persistence.py` harness (plain asserts, no pytest suite yet — that's Phase
+9) exercises the same claims deterministically against a fake, no-network `LLMProvider` and a
+temp database, so this wiring can be re-checked without a live model.
 
 ## Phase 6 — X/Twitter Integration ⬜ not started
 

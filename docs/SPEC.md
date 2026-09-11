@@ -183,11 +183,15 @@ CREATE TABLE signals (
 );
 
 -- State engine output history (replaces predictions/technical_indicators)
+-- phase is nullable (not NOT NULL): the reply path (select_register_for_reply) only ever
+-- produces a Register -- there is no Phase concept for a reply -- so a reply-triggered row
+-- has no phase to record. The post-generation path (select_phase_register_and_signal) always
+-- has both and populates phase normally. See docs/SCAFFOLDING.md Phase 5.
 CREATE TABLE state_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,
     register TEXT NOT NULL,
-    phase TEXT NOT NULL,
+    phase TEXT,
     triggering_signal_id INTEGER REFERENCES signals(id),
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
