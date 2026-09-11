@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equivalent of `select_register_for_reply()`: scores a fetched signal pool into a Phase +
   Register + which Signal to write about. All four sources and the scoring function verified
   against live API calls.
+- Phase 4 (Original Post Generation): `build_post_prompt()` in `src/persona/prompts.py`, the
+  original-post equivalent of `build_reply_prompt()` -- driven by a Phase + selected `Signal`
+  instead of an incoming post. Adds `FEW_SHOT_POST_EXAMPLES` (two per Register),
+  `POST_STRUCTURE_POOL`/`POST_PERSONALIZATION_POOL`/`POST_PHASE_NOTE` (post-specific knobs from
+  `VOICE_GUIDE.md`), and `POST_MAX_CHARS`/`POST_TARGET_CHARS` in `config.py`. The no-signal
+  branch (empty signal pool) explicitly instructs the model not to invent a fact to sound
+  anchored. `tests/manual_test_posts.py`: manual harness covering six fake signal pools (one
+  per reachable Phase, plus an empty pool), verified with a live run against the local
+  `deepseek-coder-v2:16b`.
 
 ### Changed
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
@@ -38,10 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the prompt so generation naturally leaves margin.
 
 ### Planned
-- Original post generation (`build_post_prompt()`, per-Register few-shot examples, manual
-  test harness) -- Phase 4
-- X/Twitter integration (Selenium posting + timeline scraping + reply handling)
-- SQLite schema and database layer
+- SQLite schema and database layer (Phase 5)
+- X/Twitter integration (Selenium posting + timeline scraping + reply handling) (Phase 6)
 
 ## [0.1.0] - 2026-09-11
 

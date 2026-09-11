@@ -59,13 +59,44 @@ including its empty-pool edge case — see smoke test run during this phase. No 
 `pytest` suite exists yet (that's Phase 9); this phase's own verification was a manual live
 run, same spirit as Phase 2's `tests/manual_test_replies.py`.
 
-## Phase 4 — Original Post Generation ⬜ not started
+## Phase 4 — Original Post Generation ✅ done, ⚠️ voice quality still open (same as Phase 2)
 
-- [ ] `persona/prompts.py` — `build_post_prompt()` equivalent to `build_reply_prompt()`,
-      driven by a Phase + selected Signal instead of an incoming post
-- [ ] Few-shot examples for original posts per Register (currently only reply examples exist)
-- [ ] Manual test harness for original posts (`tests/manual_test_posts.py`), same spirit as
-      the existing reply harness — fake signals in, read the output before automating
+- [x] `persona/prompts.py` — `build_post_prompt()` equivalent to `build_reply_prompt()`,
+      driven by a Phase + selected Signal instead of an incoming post. Also adds
+      `POST_STRUCTURE_POOL`/`POST_PERSONALIZATION_POOL`/`POST_PHASE_NOTE` (post-specific
+      knobs from VOICE_GUIDE.md, distinct from the reply pools since a post has no other
+      person's message to react to). `POST_MAX_CHARS`/`POST_TARGET_CHARS` added to
+      `config.py`, mirroring the reply constants (same platform limit).
+- [x] Few-shot examples for original posts per Register — `FEW_SHOT_POST_EXAMPLES` in
+      `prompts.py`, two per Register (16 total); three reuse VOICE_GUIDE.md's own canonical
+      examples verbatim, the rest newly written to the same standard.
+- [x] Manual test harness for original posts (`tests/manual_test_posts.py`), same spirit as
+      the existing reply harness — six fake signal pools in (one per reachable Phase, plus an
+      empty-pool case), read the output before automating. No `engagement/post_handler.py`
+      exists yet (not planned until bot.py wires the full cycle together in Phase 7), so the
+      harness does the analyze → select → build prompt → generate → enforce-length steps
+      inline itself, reusing `engagement.reply_handler._sentence_aware_truncate` (already
+      generic) rather than duplicating it.
+
+Verified with a live run against the locally-configured `deepseek-coder-v2:16b` (`.env`'s
+`LLM_PROVIDER=local`, confirmed reachable via `ollama list` + a live request first). All six
+scenarios produced output; Phase selection matched `state.py`'s heuristic for each
+(Convergence/Breakthrough/Anniversary/Excavation/Quiet/Quiet-via-empty-pool); every generated
+post honored the `POST_MAX_CHARS` hard cap (171–275 chars observed); anti-repetition memory
+(`recent_phases`/`recent_registers`) updated correctly across the run.
+
+**New finding, not yet resolved**: `build_post_prompt()`'s no-signal branch explicitly
+instructs the model not to invent a fact when there's no Signal to anchor to (guarding against
+the fabrication risk already flagged in Phase 2). In this run, on the empty-pool scenario, the
+local coding model did it anyway — fabricated a specific claim about Leonardo da Vinci's
+notebooks. Per `qwen2.5-coder`/`deepseek-coder-v2` both being code-specialized and already
+flagged as not representative of general-purpose voice quality (see "Local Model Testing
+Notes" below), and per the standing "don't treat any single test run as a verdict" rule, this
+one run doesn't settle whether the instruction is ineffective — but it's the same class of
+issue Phase 2 already tracks as open, now confirmed to reach the no-signal post path too.
+Rolls into Phase 2's open item rather than blocking Phase 4: the prompt-construction mechanism
+itself is built and verified working; whether it reliably produces voice-quality, non-fabricated
+output is the pre-existing cross-cutting open question, not something introduced by this phase.
 
 ## Phase 5 — Persistence ⬜ not started
 

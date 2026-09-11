@@ -106,17 +106,20 @@ Read in this order when picking up the project after time away:
 
 ## Current Status
 
-Phases 1 (Persona Engine) and 2 (Reply Pipeline) are built and manually tested — see
-`docs/SCAFFOLDING.md` for the checkbox-level breakdown. Everything from Phase 3 (Signal
-Ingestion) onward has no code yet.
+Phases 1 (Persona Engine), 2 (Reply Pipeline), 3 (Signal Ingestion), and 4 (Original Post
+Generation) are built and manually tested — see `docs/SCAFFOLDING.md` for the checkbox-level
+breakdown. Everything from Phase 5 (Persistence) onward has no code yet.
 
-**Open item carried over from Phase 2, not resolved**: reply voice quality hasn't been
-validated across enough trials to trust it. Known failure modes seen so far: generic-assistant
-phrasing still recurs occasionally, register selection is unreliable on posts with no clear
-topic signal, and the "personal reaction" personalization knob has produced at least one
-fabricated (non-factual) detail. Don't treat any single test run as a verdict on this.
+**Open item carried over from Phase 2, not resolved, now also observed on the post path**:
+voice quality hasn't been validated across enough trials to trust it, for either replies or
+original posts. Known failure modes seen so far: generic-assistant phrasing still recurs
+occasionally, register selection is unreliable on posts/signals with no clear topic signal, and
+the "personal reaction" personalization knob has produced fabricated (non-factual) detail on
+more than one occasion — most recently, `build_post_prompt()`'s no-signal branch fabricated a
+detail during Phase 4's own test run despite an explicit instruction not to invent facts when
+there's no signal to anchor to. Don't treat any single test run as a verdict on this.
 
-**Next up**: either keep gathering reply-quality trials, or start Phase 3 (Signal Ingestion) —
+**Next up**: either keep gathering reply/post-quality trials, or start Phase 5 (Persistence) —
 see `docs/SCAFFOLDING.md` for the full list either way.
 
 ## Local Model Testing Notes
