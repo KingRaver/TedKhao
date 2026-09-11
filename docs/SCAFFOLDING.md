@@ -6,6 +6,13 @@ unchecked items may be designed in SPEC.md/STRUCTURE.md but have no code yet.
 
 Use with `/phase-runner` to implement one phase at a time, verified against real commands.
 
+## Active review remediation
+
+The [Code Review Remediation Checklist](REVIEW_CHECKLIST.md) tracks findings RC-101–RC-110,
+including publication confirmation, persistent browser sessions, source selection, and test
+isolation. Consult its work register for current remediation status. The historical phase checks below describe
+build progress, not closure of these review findings or readiness for unattended publishing.
+
 ---
 
 ## Phase 1 — Persona Engine ✅ done

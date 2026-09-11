@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `docs/REVIEW_CHECKLIST.md`: actionable review remediation tracker RC-101–RC-110 covering
+  all eight review findings, persistent browser/authentication handling, dependencies,
+  acceptance criteria, baseline evidence, and separate offline/live verification. Linked
+  from the scaffolding and structure docs; current remediation status lives in its work register.
+  Numbered Phases 1–10 map to the stable RC IDs, with explicit dependencies and a
+  file-specific `/phase-runner` invocation.
 - `docs/SCAFFOLDING.md`: phased build checklist, verified against actual repo state rather
   than the plan in `docs/SPEC.md` -- Persona Engine and Reply Pipeline phases done, Signal
   Ingestion / Original Post Generation / Persistence / X integration / Orchestration phases
