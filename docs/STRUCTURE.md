@@ -50,7 +50,7 @@ tedkhao/
 │   │
 │   └── utils/
 │       ├── __init__.py
-│       ├── browser.py             # Selenium WebDriver setup
+│       ├── browser.py             # Selenium WebDriver setup + RC-103 BrowserSession ownership
 │       └── logger.py              # Centralized logging
 │
 ├── data/
@@ -61,6 +61,7 @@ tedkhao/
 │
 └── tests/
     ├── manual_test_publication.py # RC-102 lifecycle, atomicity, copied migration/restore checks
+    ├── manual_test_browser_session.py # RC-103 fake-driver BrowserSession lifecycle checks
     ├── run_offline.py             # RC-101 offline persistence/cycle/isolation checks
     ├── review_database.py         # Temporary or explicitly selected voice-review storage
     ├── test_state.py              # Register/Phase classification tests

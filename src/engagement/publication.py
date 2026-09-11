@@ -15,21 +15,24 @@ class PublicationOutcome:
     detail: str | None = None
 
 
-def publish(result, memory, target_url=None):
+def publish(result, memory, session, target_url=None):
+    """Submit result via session (a utils.browser.BrowserSession the caller already owns and
+    will close on its own lifecycle -- RC-103). This function never launches or quits a
+    driver; it only calls session.ensure_ready() so authentication is (re-)verified per the
+    session's own throttling, not on every publish() call from scratch."""
     publication_id = result['publication_id']
     # Persist before any external action. A process crash leaves a durable hold.
     memory.transition_publication(publication_id, 'attempted')
-    driver = None
     submission_started = False
     try:
-        driver = browser.get_driver()
-        browser.ensure_logged_in(driver)
+        session.ensure_ready()
         submission_started = True
         if target_url:
-            outcome = browser.post_reply(driver, target_url, result['reply_text'])
+            outcome = browser.post_reply(session.driver, target_url, result['reply_text'])
         else:
-            outcome = browser.post_tweet(driver, result['post_text'])
+            outcome = browser.post_tweet(session.driver, result['post_text'])
     except Exception as error:
+        session.flag_possibly_expired()
         memory.transition_publication(
             publication_id, 'uncertain' if submission_started else 'failed',
             detail=f'{type(error).__name__}: browser operation failed')
@@ -44,9 +47,3 @@ def publish(result, memory, target_url=None):
                                       external_id=outcome.external_id, external_url=outcome.external_url)
         logger.info('publication %s: %s', publication_id, outcome.status)
         return outcome
-    finally:
-        if driver is not None:
-            try:
-                driver.quit()
-            except Exception:
-                logger.exception('browser cleanup failed')

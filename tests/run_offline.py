@@ -45,7 +45,9 @@ def main():
             with patch.object(browser, 'get_driver', forbidden), \
                  patch.object(llm_provider, 'get_provider', forbidden):
                 import manual_test_publication as publication
+                import manual_test_browser_session as browser_session
                 publication.main()
+                browser_session.main()
                 persistence.main()
                 cycle.main()
                 for harness, table, expected in ((posts, 'posts', len(posts.SCENARIOS)),
