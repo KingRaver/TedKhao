@@ -22,3 +22,8 @@ REPLY_MAX_CHARS = 275
 REPLY_TARGET_CHARS = 220
 REPLY_SHORTEN_ATTEMPTS = 2
 RECENT_REGISTER_MEMORY = 3
+
+# Same X/Twitter platform limit as replies, so same margin-below-the-ceiling reasoning applies.
+POST_MAX_CHARS = 275
+POST_TARGET_CHARS = 220
+POST_SHORTEN_ATTEMPTS = 2
