@@ -52,10 +52,12 @@ def main():
                 import manual_test_browser_session as browser_session
                 import manual_test_browser_confirmation as browser_confirmation
                 import manual_test_failure_isolation as failure_isolation
+                import manual_test_integrated_regression as integrated_regression
                 publication.main()
                 browser_session.main()
                 browser_confirmation.main()
                 failure_isolation.main()
+                integrated_regression.main()
                 persistence.main()
                 cycle.main()
                 generation_validation.main()

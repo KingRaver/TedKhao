@@ -109,8 +109,17 @@ crash recovery, and clean shutdown on interruption. RC-104 checks cover submissi
 confirmation against a fake driver: a toast with a status permalink resolves to confirmed
 (with the external ID/URL captured), an error dialog resolves to failed, a bounded timeout
 with no evidence resolves to uncertain rather than either, and a crash after the click
-propagates without touching the shared driver. The operational database is not migrated
-by these tests.
+propagates without touching the shared driver. RC-105 checks cover generation validation
+(malformed/missing/null provider output never reaches a persisted draft or a held reply
+target); RC-106 covers source-selection tie-breaking and evidence-gated Breakthrough/
+Convergence; RC-107 covers recent-source-coverage deduplication and re-eligibility; RC-108
+covers Convergence/callback/no-signal prompt grounding; RC-109 covers per-operation failure
+isolation and `summarize_cycle()`. RC-110's `tests/manual_test_integrated_regression.py` runs
+several of `bot.py`'s cycles against one shared fake-driver `BrowserSession` and a database
+that starts as a real (in-test) legacy migration fixture, verifying driver reuse, a bounded
+crash-and-relaunch, repeat-source exclusion, and per-operation failure isolation together
+rather than in separate fixtures, plus publication-state persistence across a simulated
+process restart. The operational database is not migrated by these tests.
 
 Model-backed voice review is separate:
 

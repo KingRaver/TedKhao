@@ -46,7 +46,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Verified | Claude | Phase 7 evidence below; `feat/phase-7-source-coverage` |
 | 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Verified | Claude | Phase 8 evidence below; `feat/phase-8-evidence-backed-prompts` |
 | 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Verified | Claude | Phase 9 evidence below; `feat/phase-9-per-operation-failure-handling` |
-| 10 | RC-110 | High | Run integrated regression and controlled live validation | RC-101–RC-109 | Planned | Unassigned | Pending |
+| 10 | RC-110 | High | Run integrated regression and controlled live validation | RC-101–RC-109 | In progress | Claude | Phase 10 evidence below; `feat/phase-10-integrated-completion-check`. Offline regression, doc updates, and live-validation procedure done; live validation itself is blocked on user authorization |
 
 Recommended sequence: RC-101 → RC-102 → RC-103 → RC-104 → RC-105 → RC-106 →
 RC-107 → RC-108 → RC-109 → RC-110. Dependencies, rather than priority alone, govern order.
@@ -527,20 +527,111 @@ inside `run_offline.py`'s existing socket/subprocess-blocking sandbox. Not deplo
 
 **Depends on:** Phase 1 (RC-101), Phase 2 (RC-102), Phase 3 (RC-103), Phase 4 (RC-104), Phase 5 (RC-105), Phase 6 (RC-106), Phase 7 (RC-107), Phase 8 (RC-108), Phase 9 (RC-109).
 
-- [ ] Run the complete offline regression command against temporary databases and fake
+- [x] Run the complete offline regression command against temporary databases and fake
       providers/browser fixtures; record results and the exact revision tested.
-- [ ] Verify resident multi-cycle driver reuse, crash recovery, migration, publication-state
+- [x] Verify resident multi-cycle driver reuse, crash recovery, migration, publication-state
       transitions, repeat-source exclusion, and failure isolation together.
-- [ ] Update SPEC.md, SCAFFOLDING.md, STRUCTURE.md, README.md, and CHANGELOG.md as applicable
+- [x] Update SPEC.md, SCAFFOLDING.md, STRUCTURE.md, README.md, and CHANGELOG.md as applicable
       so documented behavior matches implementation; preserve unresolved voice-quality items.
-- [ ] Prepare a concrete live-validation procedure: account/profile, intended post and reply,
+- [x] Prepare a concrete live-validation procedure: account/profile, intended post and reply,
       confirmation checks, stop conditions, and expected database records.
-- [ ] Obtain explicit user authorization for that specific real-account validation before
+- [x] Obtain explicit user authorization for that specific real-account validation before
       login/posting, as required by CLAUDE.md's current-status and Phase 6 guidance.
 - [ ] After authorization, verify session reuse, actual publication IDs, and confirmation
       persistence. Record evidence without credentials, cookies, or unnecessary account data.
+      **Attempted, not achieved**: login itself hit X's rate-limiting before any publication
+      was attempted -- see "Live validation attempt, paused" below. Needs a fresh attempt once
+      the rate limit clears.
 - [ ] Record deployment separately, including revision and environment. Until live validation
       happens, label the browser integration offline-verified/live-unverified.
+
+Evidence required: the exact offline command and revision; the integrated multi-cycle
+regression's coverage of all six behaviors together; the doc updates made; and
+docs/LIVE_VALIDATION_PROCEDURE.md itself. The final three boxes require the user's specific,
+explicit authorization for a real-account run (a confirming question is not that
+authorization) and are not implied done by anything above.
+
+RC-110 verification, offline portion only (2026-09-11, working tree based on `ef6aabc`,
+branch `feat/phase-10-integrated-completion-check`):
+`venv/bin/python tests/run_offline.py` passed every existing offline check plus the new
+`tests/manual_test_integrated_regression.py`, wired into the runner. That new check seeds a
+real version-0 legacy database (old `posts`/`replied_posts` rows, no copy/throwaway) and lets
+constructing `PersonaMemory` migrate it to version 2 as an ordinary side effect, then runs
+three `bot.run_post_cycle()`/`run_reply_cycle()` cycles against one shared fake-driver
+`BrowserSession`: cycle 1 confirms an original post and two replies from a cold launch (one
+`get_driver()` call); a plain draft->attempted->failed publication is seeded directly (RC-102's
+ordinary, non-reconcile failure path) to set up a retry-eligible candidate distinct from an
+uncertain one; cycle 2 confirms the post's source is skipped (RC-107,
+`all_candidate_sources_recently_covered`) without touching the browser at all, the two
+already-confirmed replies are held and never attempted, the seeded failed reply retries and
+succeeds, and a third reply's ordinary (non-crash) `WebDriverException` publish failure
+(`uncertain`, RC-109's `publish_failed` outcome) does not block a fourth, independent reply
+from succeeding right after it -- all with `get_driver()` still called exactly once; cycle 3
+flags the session for re-verification and forces `is_logged_in()` to raise
+`InvalidSessionIdException` on that re-check, driving a real diagnosed-crash path through
+`bot._with_crash_recovery()`: the pre-submission exception leaves the post `failed` (not
+`uncertain`, since it happened before submission started) so the bounded one relaunch-and-retry
+(`get_driver()` call count 1 -> 2, a genuinely different driver object) can transition it
+`failed -> attempted -> confirmed`, and the very next reply reuses that relaunched driver
+without a third launch. After `session.close()`, a fresh `PersonaMemory` against the same
+database (simulating a process restart) confirms every hold/confirmation above, including the
+original legacy row's `held-but-unproven` state, survives unchanged.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+Documentation: `docs/STRUCTURE.md` gained the previously-missing `manual_test_failure_isolation.py`
+(RC-109) and the new `manual_test_integrated_regression.py`/`LIVE_VALIDATION_PROCEDURE.md`
+entries; `README.md`'s Verification section extended to describe RC-105 through RC-110
+coverage, which it previously stopped short of; `CHANGELOG.md` gained an `[Unreleased]` entry.
+`docs/SPEC.md` and `docs/SCAFFOLDING.md` were read and left unchanged: SPEC.md's Data Models
+section already defers schema detail to `PUBLICATION_MIGRATION.md` (current) and its Open
+Questions are all still genuinely open; SCAFFOLDING.md is the frozen historical build record
+per `CLAUDE.md`'s own instruction ("it does not track post-launch remediation") and contains
+nothing factually contradicted by this phase's changes, so editing it would duplicate status
+that belongs only in this file. `CLAUDE.md`'s open voice-quality item was not touched or
+implied resolved by any of the above.
+New `docs/LIVE_VALIDATION_PROCEDURE.md` specifies the account/profile, a visible-window
+login-clearing step, a one-cycle preview-then-live procedure capped at one post and one reply
+(`--once --live --max-replies 1`), the exact confirmation checks (log line, `publications` row
+status/external_id/external_url, the real external URL visually checked against what was
+logged), stop conditions (any non-confirmed status, `SessionPaused`, a rate-limit/warning/
+challenge, more than the capped one post/reply, a crash), and the exact expected new database
+rows.
+No live Chrome, real Anthropic/local-model API, or real X account was used for anything above.
+The remaining three checklist boxes -- authorization, the authorized live run itself, and
+recording deployment -- are explicitly not attempted in this session; per CLAUDE.md's rule
+that a confirming or clarifying question is not authorization to proceed, they require the
+user to read docs/LIVE_VALIDATION_PROCEDURE.md and give specific, explicit go-ahead first.
+RC-103/RC-104's browser integration remains labeled offline-verified/live-unverified until
+that happens. Not deployed.
+
+**Live validation attempt, paused (2026-09-11)**: the user gave explicit authorization to run
+[docs/LIVE_VALIDATION_PROCEDURE.md](LIVE_VALIDATION_PROCEDURE.md) against the real account.
+The database was backed up first (`data/backup/tedkhao.pre-rc110-live-20260911-231037.db`,
+`PRAGMA integrity_check` = ok). `LOCAL_LLM_MODEL=deepseek-coder-v2:16b` was confirmed already
+correctly set in `.env` (an earlier `grep` of the wrong variable name had incorrectly
+suggested otherwise -- corrected before any generation was attempted). Step 1
+(`resume_manual_login()`, a visible, non-headless Chrome window against the persisted
+`data/browser_profile/`) was attempted three times: the first window was closed by the user
+by accident before login; the second and third attempts' automated login step (`log_in()`,
+entering `TWITTER_USERNAME`/`TWITTER_PASSWORD`) triggered X's bot-detection/rate-limiting,
+which then also blocked the user's own subsequent manual credential entry in the same window.
+Per this procedure's own stop condition ("X shows a rate-limit notice... or any verification
+challenge" -> stop, do not retry), all further automated and manual login attempts were
+halted immediately on the user's report. **No post or reply was generated or attempted** --
+the failure occurred entirely within step 1 (authentication), before step 2 (dry-run preview)
+or step 3 (the capped live cycle). No `publications`/`posts` rows were written by this
+attempt; the backup taken beforehand was not needed. `ps aux` confirmed no automation-owned
+Chrome/chromedriver process remains running and the profile lock file is unheld, so the
+persisted profile is left in a normal, non-locked state for a later attempt once the rate
+limit has cleared -- no cleanup action was required or taken.
+This is a genuine, useful data point for RC-110's own purpose: it demonstrates X's real
+bot-detection responds to this automation's login pattern in a way no offline fake-driver test
+could show, and confirms `log_in()`'s existing behavior (a bounded, non-looping single attempt,
+never an automatic retry) did not compound the problem. RC-103/RC-104 remain
+offline-verified/live-unverified; RC-110's remaining checklist boxes (authorization or a
+successful authorized run, and deployment recording) are unchanged -- authorization was given
+and exercised, but the run itself did not reach a state worth recording as verification
+evidence. Retry is a decision for a later, explicit go-ahead once the account's rate limit has
+cleared, not something to attempt again automatically.
 
 ## Baseline evidence
 
@@ -573,6 +664,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | 2026-09-11 | RC-107 | `feat/phase-7-source-coverage` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_source_coverage.py`, updated `tests/manual_test_publication.py` migration assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `signals.base.source_key()`/`content_fingerprint()`; schema version 2 adds `publications.source_url`/`source_fingerprint`, populated only for original posts; `database.get_covered_sources()` + `PersonaMemory.covered_source_keys()` (queried fresh per call, confirmed-within-`SOURCE_COVERAGE_WINDOW_HOURS` or held attempted/uncertain regardless of window, draft/failed never held); `generate_post()` filters the pool before selection and returns an explicit `"skipped": "all_candidate_sources_recently_covered"` result when every candidate is covered, without persisting anything; `bot.run_post_cycle()` handles the skip. Same-URL title changes (materially updated) become eligible again inside the window; legacy rows keep NULL source identity (not backfilled), matching RC-102 precedent | Not deployed |
 | 2026-09-11 | RC-108 | `feat/phase-8-evidence-backed-prompts` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_prompt_grounding.py`, updated `tests/manual_test_state_selection.py` unpacking + Convergence assertion); `venv/bin/python -m compileall -q src tests`; `git diff --check` | `select_phase_register_and_signal()` now returns `convergence_partner` (the other rhyming signal) instead of dropping it; `build_post_prompt()` grounds Convergence in both signals and raises if the partner is missing, `generate_post()` catches that and returns an explicit skip instead; `_CALLBACK_STRUCTURE` only offered when a real confirmed post (`database.get_last_confirmed_post`/`PersonaMemory.last_confirmed_post`) is supplied, and its actual text is embedded in the prompt when offered; fact-requiring structures excluded whenever there's no signal; thread-opening removed from `POST_STRUCTURE_POOL` entirely. Model trial recorded (`deepseek-coder-v2:16b`, real Ollama calls): Convergence and callback grounding both confirmed working; no-signal fabrication confirmed still unresolved -- see docs/VOICE_TRIALS.md | Not deployed |
 | 2026-09-11 | RC-109 | `feat/phase-9-per-operation-failure-handling` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_failure_isolation.py`, updated `tests/manual_test_publication.py` publish-failure assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | `bot.run_post_cycle()`/`run_reply_cycle()` isolate a `GenerationError` or non-`SessionPaused` publish exception per operation (`outcome: "generation_failed"`/`"publish_failed"`, sanitized detail) instead of letting it abort the rest of the cycle, while `SessionPaused` still always propagates so an unhealthy shared session stops every subsequent X action -- verified a third, otherwise-eligible reply candidate is never attempted once a second candidate's re-checked auth raises `SessionPaused`. New `bot.summarize_cycle()` buckets a cycle's results into confirmed/draft/failed/skipped/uncertain with target/source identifiers, no credential/cookie fields possible. No new retry loop added; existing bounded-recovery mechanisms (RC-103 crash relaunch, RC-105 generation attempts) are unchanged | Not deployed |
+| 2026-09-11 | RC-110 (offline portion) | `feat/phase-10-integrated-completion-check` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_integrated_regression.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | New integrated test runs a real version-0-to-2 migration then three `bot.py` cycles against one shared fake-driver `BrowserSession`, verifying driver reuse, repeat-source exclusion, held-vs-retry-eligible publication states, per-operation failure isolation, and one bounded diagnosed-crash relaunch all together, with every state confirmed to survive a simulated process restart. `docs/STRUCTURE.md`/`README.md`/`CHANGELOG.md` updated; new `docs/LIVE_VALIDATION_PROCEDURE.md` written. Live authorization, the authorized live run, and deployment recording remain outstanding -- see Phase 10 above | Not deployed |
 
 ## Decisions and change history
 
