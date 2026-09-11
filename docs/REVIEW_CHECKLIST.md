@@ -45,7 +45,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Verified | Claude | Phase 6 evidence below; `feat/phase-6-source-selection` |
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Verified | Claude | Phase 7 evidence below; `feat/phase-7-source-coverage` |
 | 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Verified | Claude | Phase 8 evidence below; `feat/phase-8-evidence-backed-prompts` |
-| 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Planned | Unassigned | Pending |
+| 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Verified | Claude | Phase 9 evidence below; `feat/phase-9-per-operation-failure-handling` |
 | 10 | RC-110 | High | Run integrated regression and controlled live validation | RC-101–RC-109 | Planned | Unassigned | Pending |
 
 Recommended sequence: RC-101 → RC-102 → RC-103 → RC-104 → RC-105 → RC-106 →
@@ -467,16 +467,61 @@ in docs/VOICE_TRIALS.md for whoever next investigates model-output accuracy. Not
 
 Files: `src/bot.py`, engagement handlers, browser outcome handling.
 
-- [ ] A post-generation or individual reply failure does not discard independent candidates.
-- [ ] Return/log a cycle summary separating confirmed, draft, failed, skipped, and uncertain
+- [x] A post-generation or individual reply failure does not discard independent candidates.
+- [x] Return/log a cycle summary separating confirmed, draft, failed, skipped, and uncertain
       operations with their target/source identifiers; never log credentials or cookies.
-- [ ] Pause all X actions on shared-session authentication challenges or account restrictions;
+- [x] Pause all X actions on shared-session authentication challenges or account restrictions;
       failure isolation must not continue submitting through an unhealthy session.
-- [ ] Keep recovery attempts bounded and retain sufficient outcome state across restarts.
-- [ ] Test a failed post followed by eligible replies, a failed reply followed by a successful
+- [x] Keep recovery attempts bounded and retain sufficient outcome state across restarts.
+- [x] Test a failed post followed by eligible replies, a failed reply followed by a successful
       candidate, and a session challenge that stops subsequent X actions.
 
 Evidence required: cycle failure-path tests and example sanitized summaries.
+
+RC-109 verification (2026-09-11, working tree based on `d4b21a8`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_failure_isolation.py`
+checks alongside every existing offline check. `bot.run_post_cycle()`/`bot.run_reply_cycle()`
+now isolate a single operation's failure instead of letting it abort the rest of the cycle:
+`generate_post()`/`generate_reply()` raising `GenerationError` (RC-105's bounded-attempt
+exhaustion) is caught at the call site and turned into an `outcome: "generation_failed"` result
+carrying a sanitized detail (the `GenerationError` message, which RC-105's provider adapters
+already keep free of credentials) instead of propagating out of `run_cycle()`; a `publish()`
+call (RC-102/RC-104) raising anything other than `SessionPaused` is likewise caught and turned
+into `outcome: "publish_failed"`, with detail deliberately limited to the exception's type name
+(never its raw text, since a Selenium exception can carry page/DOM content) -- the durable
+`failed`/`uncertain` status `publish()` already writes to `publications` before re-raising
+(unchanged from RC-102/RC-104) is what a restart or reconciliation actually reads, so isolating
+the exception in `bot.py` loses no outcome state. `SessionPaused` is deliberately excluded from
+this isolation in both functions (`except SessionPaused: raise`) so a shared-session
+authentication challenge or account restriction still stops every subsequent X action this
+cycle, exactly as RC-103 established -- verified directly: a second candidate's auth re-check
+(triggered by the first candidate's `flag_possibly_expired()`) finding no valid session raises
+`SessionPaused`, which propagates out of `run_reply_cycle()`, and a third, otherwise-eligible
+candidate is never attempted at all (zero `publications` rows for it, `log_in()` never called).
+New `bot.summarize_cycle()` buckets a completed cycle's post + reply results into confirmed/
+draft/failed/skipped/uncertain, each entry carrying a target/source identifier (signal source/
+URL for a post, target id/URL/author handle for a reply) and an outcome/detail -- verified
+directly against constructed results covering all five buckets, and that no field beyond
+`kind`/`source`/`url`/`target_id`/`target_url`/`author_handle`/`outcome`/`detail` ever appears,
+so no credential or cookie can reach it (none of `generate_post()`/`generate_reply()`/
+`publish()`'s result dicts carry either to begin with). `run_cycle()` calls it after both
+sub-cycles and logs a one-line sanitized summary count. Recovery attempts remain bounded by the
+existing, unmodified mechanisms: RC-103's `_MAX_CRASH_RECOVERIES_PER_CYCLE` (one relaunch-and-
+retry per diagnosed browser crash) and RC-105's `POST_GENERATION_ATTEMPTS`/
+`REPLY_GENERATION_ATTEMPTS`; this phase adds no new retry loop, only isolates an already-bounded
+failure from the rest of the cycle.
+Two RC-102/RC-103 tests in `tests/manual_test_publication.py` (`test_lifecycle`'s driver-launch-
+failure case, `test_uncertainty`'s submission-exception case) asserted the pre-RC-109 contract
+that a publish exception propagates out of `run_reply_cycle()`; both were updated to assert the
+new `outcome: "publish_failed"`/`"uncertain"`-status contract instead, per this phase's own
+scope -- the durable state each test actually verifies (publication row status, held/unheld
+target, driver lifecycle) is unchanged and still asserted; only the mechanism for observing a
+failure (a returned result instead of a raised exception) changed, matching RC-108's precedent
+of updating an earlier phase's test for a deliberate, documented contract change.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured. No real Anthropic/local-model API or
+browser was used -- fake providers and a patched `browser.get_driver`/fake Selenium driver only,
+inside `run_offline.py`'s existing socket/subprocess-blocking sandbox. Not deployed.
 
 ## Phase 10: RC-110 — Integrated completion check
 
@@ -527,6 +572,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | 2026-09-11 | RC-106 | `feat/phase-6-source-selection` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_state_selection.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `Signal.novelty_evidenced`, set by fetchers whose rank is real freshness/trending evidence (arxiv, hackernews) and withheld where it isn't (wikipedia_otd, met_museum, x_timeline); tie-breaking now uses a seeded random choice over tied signals instead of list order; Breakthrough requires `novelty_evidenced`; Convergence requires two different-domain high-novelty signals to share significant vocabulary. History-only and arts-only top-rank-1.0 pools no longer resolve to Breakthrough; unrelated cross-domain high-novelty signals no longer resolve to Convergence; both baseline-evidence regressions fixed | Not deployed |
 | 2026-09-11 | RC-107 | `feat/phase-7-source-coverage` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_source_coverage.py`, updated `tests/manual_test_publication.py` migration assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `signals.base.source_key()`/`content_fingerprint()`; schema version 2 adds `publications.source_url`/`source_fingerprint`, populated only for original posts; `database.get_covered_sources()` + `PersonaMemory.covered_source_keys()` (queried fresh per call, confirmed-within-`SOURCE_COVERAGE_WINDOW_HOURS` or held attempted/uncertain regardless of window, draft/failed never held); `generate_post()` filters the pool before selection and returns an explicit `"skipped": "all_candidate_sources_recently_covered"` result when every candidate is covered, without persisting anything; `bot.run_post_cycle()` handles the skip. Same-URL title changes (materially updated) become eligible again inside the window; legacy rows keep NULL source identity (not backfilled), matching RC-102 precedent | Not deployed |
 | 2026-09-11 | RC-108 | `feat/phase-8-evidence-backed-prompts` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_prompt_grounding.py`, updated `tests/manual_test_state_selection.py` unpacking + Convergence assertion); `venv/bin/python -m compileall -q src tests`; `git diff --check` | `select_phase_register_and_signal()` now returns `convergence_partner` (the other rhyming signal) instead of dropping it; `build_post_prompt()` grounds Convergence in both signals and raises if the partner is missing, `generate_post()` catches that and returns an explicit skip instead; `_CALLBACK_STRUCTURE` only offered when a real confirmed post (`database.get_last_confirmed_post`/`PersonaMemory.last_confirmed_post`) is supplied, and its actual text is embedded in the prompt when offered; fact-requiring structures excluded whenever there's no signal; thread-opening removed from `POST_STRUCTURE_POOL` entirely. Model trial recorded (`deepseek-coder-v2:16b`, real Ollama calls): Convergence and callback grounding both confirmed working; no-signal fabrication confirmed still unresolved -- see docs/VOICE_TRIALS.md | Not deployed |
+| 2026-09-11 | RC-109 | `feat/phase-9-per-operation-failure-handling` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_failure_isolation.py`, updated `tests/manual_test_publication.py` publish-failure assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | `bot.run_post_cycle()`/`run_reply_cycle()` isolate a `GenerationError` or non-`SessionPaused` publish exception per operation (`outcome: "generation_failed"`/`"publish_failed"`, sanitized detail) instead of letting it abort the rest of the cycle, while `SessionPaused` still always propagates so an unhealthy shared session stops every subsequent X action -- verified a third, otherwise-eligible reply candidate is never attempted once a second candidate's re-checked auth raises `SessionPaused`. New `bot.summarize_cycle()` buckets a cycle's results into confirmed/draft/failed/skipped/uncertain with target/source identifiers, no credential/cookie fields possible. No new retry loop added; existing bounded-recovery mechanisms (RC-103 crash relaunch, RC-105 generation attempts) are unchanged | Not deployed |
 
 ## Decisions and change history
 

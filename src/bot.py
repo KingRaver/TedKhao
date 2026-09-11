@@ -31,7 +31,7 @@ from selenium.common.exceptions import InvalidSessionIdException
 from engagement.publication import publish
 from engagement.post_handler import generate_post
 from engagement.reply_handler import generate_reply
-from llm_provider import get_provider
+from llm_provider import GenerationError, get_provider
 from persona.memory import PersonaMemory
 from signals import arts_feed, arxiv_feed, hackernews_feed, history_today, timeline_scraper
 from signals.base import Signal
@@ -113,15 +113,44 @@ def _parse_x_post_url(url: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+# RC-109: outcome values a post/reply result dict can carry, bucketed for summarize_cycle().
+# "generation_failed"/"publish_failed" are isolated locally (see run_post_cycle/run_reply_cycle)
+# rather than left to raise and abort the rest of the cycle; SessionPaused is deliberately not
+# in this map -- it always propagates (see both functions below) so an unhealthy session stops
+# every subsequent X action instead of being treated as one more isolated failure.
+_OUTCOME_BUCKETS = {
+    "confirmed": "confirmed",
+    "draft": "draft",
+    "skipped": "skipped",
+    "uncertain": "uncertain",
+    "failed": "failed",
+    "generation_failed": "failed",
+    "publish_failed": "failed",
+}
+
+
 def run_post_cycle(provider, memory: PersonaMemory, domain_signals: list[Signal],
                     timeline_signals: list[Signal], live_posting: bool,
                     session: BrowserSession | None = None) -> dict:
     if live_posting and session is None:
         raise ValueError("live_posting requires a BrowserSession -- see main()'s session setup")
 
-    result = generate_post(domain_signals + timeline_signals, provider, memory)
+    try:
+        result = generate_post(domain_signals + timeline_signals, provider, memory)
+    except GenerationError as error:
+        # RC-109: an isolated generation failure must not stop run_reply_cycle() -- run_cycle()
+        # calls both independently, so returning a failed result (instead of letting this
+        # propagate) is what keeps reply candidates unaffected by a failed post.
+        logger.error("post generation failed: %s", error)
+        return {
+            "post_id": None, "publication_id": None, "post_text": None,
+            "phase": None, "register": None, "signal": None,
+            "outcome": "generation_failed", "detail": f"{type(error).__name__}: {error}",
+        }
+
     if result.get("skipped"):
         logger.info("post generation skipped: %s", result["skipped"])
+        result["outcome"] = "skipped"
         return result
 
     logger.info("post generated: phase=%s register=%s signal=%s chars=%d",
@@ -129,9 +158,27 @@ def run_post_cycle(provider, memory: PersonaMemory, domain_signals: list[Signal]
                 result["signal"].source if result["signal"] else "none",
                 len(result["post_text"]))
 
-    if live_posting:
+    if not live_posting:
+        result["outcome"] = "draft"
+        return result
+
+    try:
         result['publication_outcome'] = _with_crash_recovery(
             session, lambda: publish(result, memory, session))
+        result['outcome'] = result['publication_outcome'].status
+    except SessionPaused:
+        # An unhealthy shared session must stop every subsequent X action this cycle, not be
+        # isolated like an ordinary publish failure -- let it propagate out of run_cycle().
+        raise
+    except Exception as error:
+        # publish() already durably records 'failed'/'uncertain' before re-raising
+        # (engagement.publication.publish, RC-102/RC-104) -- isolating the exception here
+        # (rather than letting it propagate) is what keeps run_reply_cycle() unaffected by a
+        # single failed post publish. Detail intentionally omits the raw exception text, same
+        # as publish()'s own convention, since a browser exception can carry page/DOM content.
+        logger.error("post publish failed (%s)", type(error).__name__)
+        result['outcome'] = 'publish_failed'
+        result['detail'] = f'{type(error).__name__}: publish operation failed'
 
     return result
 
@@ -157,18 +204,84 @@ def run_reply_cycle(provider, memory: PersonaMemory, timeline_signals: list[Sign
             "author_handle": author_handle or "@someone",
             "text": signal.summary or signal.title,
         }
-        result = generate_reply(post, provider, memory)
+
+        try:
+            result = generate_reply(post, provider, memory)
+        except GenerationError as error:
+            # RC-109: one candidate's generation failure must not stop later independent
+            # candidates in the same cycle -- record it and move on to the next signal.
+            logger.error("reply generation failed for target=%s: %s", post["author_handle"], error)
+            results.append({
+                "post": post, "publication_id": None, "reply_text": None,
+                "outcome": "generation_failed", "detail": f"{type(error).__name__}: {error}",
+            })
+            continue
+
         result["target_url"] = signal.url
         logger.info("reply generated: target=%s register=%s chars=%d",
                     post["author_handle"], result["register"].value, len(result["reply_text"]))
 
-        if live_posting:
+        if not live_posting:
+            result["outcome"] = "draft"
+            results.append(result)
+            continue
+
+        try:
             result['publication_outcome'] = _with_crash_recovery(
                 session, lambda: publish(result, memory, session, signal.url))
+            result['outcome'] = result['publication_outcome'].status
+        except SessionPaused:
+            # Stop attempting every subsequent reply this cycle rather than isolating this one
+            # like an ordinary publish failure -- an unhealthy shared session must not keep
+            # submitting. This result is dropped, same as a mid-cycle crash would be; the
+            # publication row publish() already wrote before raising is the durable record.
+            raise
+        except Exception as error:
+            logger.error("reply publish failed for target=%s (%s)",
+                         post["author_handle"], type(error).__name__)
+            result['outcome'] = 'publish_failed'
+            result['detail'] = f'{type(error).__name__}: publish operation failed'
 
         results.append(result)
 
     return results
+
+
+def _post_identifier(post_result: dict) -> dict:
+    signal = post_result.get("signal")
+    return {"source": signal.source if signal else None, "url": signal.url if signal else None}
+
+
+def _reply_identifier(reply_result: dict) -> dict:
+    post = reply_result.get("post") or {}
+    return {"target_id": post.get("id"), "target_url": post.get("url"),
+            "author_handle": post.get("author_handle")}
+
+
+def summarize_cycle(post_result: dict, reply_results: list[dict]) -> dict:
+    """Bucket this cycle's post + reply operations by outcome (RC-109) into a status line safe
+    to log: confirmed, draft, failed, skipped, and uncertain, each entry carrying a target/
+    source identifier and an outcome/detail -- never credentials or cookies, since neither ever
+    reaches these result dicts (generate_post()/generate_reply()/publish() don't carry them),
+    and a publish failure's detail is deliberately just an exception type name (see
+    run_post_cycle/run_reply_cycle), never a raw browser exception that could embed page/DOM
+    content."""
+    summary = {"confirmed": [], "draft": [], "failed": [], "skipped": [], "uncertain": []}
+
+    outcome = post_result.get("outcome", "draft")
+    summary[_OUTCOME_BUCKETS.get(outcome, "failed")].append({
+        "kind": "post", **_post_identifier(post_result), "outcome": outcome,
+        "detail": post_result.get("detail") or post_result.get("skipped"),
+    })
+
+    for reply_result in reply_results:
+        outcome = reply_result.get("outcome", "draft")
+        summary[_OUTCOME_BUCKETS.get(outcome, "failed")].append({
+            "kind": "reply", **_reply_identifier(reply_result), "outcome": outcome,
+            "detail": reply_result.get("detail"),
+        })
+
+    return summary
 
 
 def run_cycle(provider, memory: PersonaMemory, live_posting: bool, max_replies: int,
@@ -178,7 +291,11 @@ def run_cycle(provider, memory: PersonaMemory, live_posting: bool, max_replies: 
                                   live_posting, session)
     reply_results = run_reply_cycle(provider, memory, timeline_signals, live_posting,
                                      max_replies, session)
-    return {"post": post_result, "replies": reply_results}
+    summary = summarize_cycle(post_result, reply_results)
+    logger.info("cycle summary: confirmed=%d draft=%d failed=%d skipped=%d uncertain=%d",
+                len(summary["confirmed"]), len(summary["draft"]), len(summary["failed"]),
+                len(summary["skipped"]), len(summary["uncertain"]))
+    return {"post": post_result, "replies": reply_results, "summary": summary}
 
 
 def main() -> None:
