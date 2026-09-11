@@ -21,6 +21,7 @@ tedkhao/
 │   ├── REVIEW_CHECKLIST.md     # Live post-launch remediation tracker (RC-101-110)
 │   ├── PUBLICATION_MIGRATION.md # RC-102 publication schema, migration, and reconciliation
 │   ├── VOICE_TRIALS.md         # RC-108+ model-backed generation trials, separate from deterministic tests
+│   ├── LIVE_VALIDATION_PROCEDURE.md # RC-110 authorized live-account validation procedure
 │   └── RESEARCH_NOTES.md       # Source-referenced findings from the defi/karma research
 │
 ├── src/
@@ -75,6 +76,8 @@ tedkhao/
     ├── manual_test_state_selection.py # RC-106 tie-break/evidenced-Breakthrough/Convergence checks
     ├── manual_test_source_coverage.py # RC-107 recent-source-coverage deduplication checks
     ├── manual_test_prompt_grounding.py # RC-108 Convergence/callback/no-signal prompt-contract checks
+    ├── manual_test_failure_isolation.py # RC-109 per-operation failure isolation + summarize_cycle() checks
+    ├── manual_test_integrated_regression.py # RC-110 combined multi-cycle regression (migration + everything above, together)
     ├── manual_test_posts.py        # Model-backed original-post voice review harness
     ├── manual_test_replies.py      # Model-backed reply voice review harness
     ├── manual_test_browser.py      # Live-Chrome smoke test (no real account actions)

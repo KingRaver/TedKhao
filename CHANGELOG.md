@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-110 (partial -- offline portion only): new `tests/manual_test_integrated_regression.py`
+  exercises resident multi-cycle driver reuse, a real version-0-to-2 database migration,
+  publication-state transitions, repeat-source exclusion (RC-107), and per-operation failure
+  isolation (RC-109) together in one continuous scenario against a single shared fake-driver
+  `BrowserSession` and `PersonaMemory`, rather than in each earlier phase's own isolated
+  fixture: a legacy-schema database is seeded and migrated for real via `PersonaMemory`
+  construction (not a throwaway copy); three `bot.run_post_cycle()`/`run_reply_cycle()` cycles
+  then confirm an original post and two replies, skip a repeat post source and two
+  already-held replies, retry a cleanly-failed reply, isolate one candidate's ordinary publish
+  failure from an unrelated candidate's success, and recover from one diagnosed
+  `InvalidSessionIdException` (evidence-of-expiry re-check, one bounded relaunch, immediate
+  reuse of the relaunched driver for the very next action) -- with every publication-state
+  transition and the original legacy row confirmed to survive a simulated process restart
+  (a fresh `PersonaMemory` against the same database). Wired into `tests/run_offline.py`.
+  `docs/STRUCTURE.md` updated for this file and the previously-undocumented
+  `tests/manual_test_failure_isolation.py` (RC-109); `README.md`'s Verification section
+  extended to cover RC-105 through RC-110. Remaining RC-110 checklist items (documentation
+  parity already covered by this entry; the live-validation procedure, its explicit
+  authorization, and the authorized live check itself) are tracked separately in
+  `docs/REVIEW_CHECKLIST.md`'s Phase 10 -- not implied done by this entry.
 - RC-109: `bot.run_post_cycle()`/`run_reply_cycle()` now isolate a single operation's failure
   instead of letting it abort the rest of the cycle -- a `generate_post()`/`generate_reply()`
   `GenerationError` (RC-105) is caught and turned into an `outcome: "generation_failed"` result,
