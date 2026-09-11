@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-103: `utils.browser.BrowserSession`, the single ownership boundary for one Chrome
+  WebDriver across a whole `bot.py` process -- launched once, reused by timeline scraping,
+  posting, and replies, and closed only on deliberate shutdown or a diagnosed crash
+  (`InvalidSessionIdException`, bounded to one relaunch-and-retry per call via
+  `bot._with_crash_recovery()`). A file lock on `data/browser_profile/` refuses a second
+  concurrent process. Authentication is checked at session startup and after
+  `flag_possibly_expired()`, never before every action; a headless session with no valid
+  login raises `SessionPaused` instead of retrying `log_in()` automatically --
+  `resume_manual_login()` opens a visible Chrome window for a human to clear a login/
+  verification challenge, rate limit, or account warning, then hands back to the resident
+  loop. `timeline_scraper.fetch()` and `engagement.publication.publish()` now take an
+  injected session instead of creating and quitting their own driver per call; `bot.py`'s
+  resident loop shares one session across every cycle and `--once` closes it with the
+  process. New `tests/manual_test_browser_session.py` (fake-driver, no real Chrome) covers
+  one launch across multiple cycles, shared driver identity, no per-action `quit()`, bounded
+  crash recovery, and clean shutdown on interruption; wired into `tests/run_offline.py`.
 - RC-102: transactional publication drafts, durable attempts/outcomes and event history,
   confirmed-reply deduplication, restart-safe uncertainty/legacy holds, and schema-version-1
   migration preserving historical rows. Click-only browser returns remain uncertain pending

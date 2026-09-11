@@ -247,7 +247,14 @@ here refers to internal module boundaries and external integrations:
 
 - **X/Twitter**: Selenium browser automation with stored session (`TWITTER_USERNAME` /
   `TWITTER_PASSWORD` in `.env`), same approach as the reference bots. No official API keys
-  needed for v1.
+  needed for v1. RC-103: the session is owned process-wide by `utils.browser.BrowserSession`
+  -- one driver launched by `bot.py`'s orchestrator and reused across every cycle, not
+  relaunched per action, with a profile-directory lock preventing two processes from sharing
+  it concurrently. Authentication is checked at startup and after evidence of expiry, not
+  before every action; a headless session with no valid login raises `SessionPaused` rather
+  than retrying login automatically, and `resume_manual_login()` provides the
+  visible-browser path for a human to clear a login/verification challenge, rate limit, or
+  account warning.
 - **Content signal APIs**: arXiv, Wikipedia/Wikidata, and Hacker News require no auth. Met
   Museum and Rijksmuseum APIs are free/keyless; Smithsonian Open Access requires a free API
   key (`SMITHSONIAN_API_KEY`).

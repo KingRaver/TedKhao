@@ -71,6 +71,22 @@ confirmation evidence, so submissions remain uncertain pending RC-104.
 Before the first startup with an existing database, follow the
 [RC-102 backup and migration procedure](docs/PUBLICATION_MIGRATION.md).
 
+**Browser lifecycle (RC-103):** one `BrowserSession` (`src/utils/browser.py`) owns the Chrome
+WebDriver for the life of the process -- `python bot.py` (the resident timer loop) launches it
+once and reuses it across every cycle instead of relaunching Chrome per action; `python bot.py
+--once` uses it for a single cycle and closes it with the process, so use the resident loop
+rather than an external `--once` cron schedule when you want the browser to stay open between
+cycles. A lock on `data/browser_profile/` refuses a second process sharing the same profile at
+the same time. If X asks for something a script can't clear -- an expired login, a
+verification challenge, a rate limit, an account warning -- the resident loop pauses X actions
+(logged clearly) rather than retrying login automatically; stop the process and run:
+
+```bash
+venv/bin/python -c "from utils.browser import resume_manual_login as r; r()"
+```
+
+to clear it by hand in a visible Chrome window, then restart the resident loop.
+
 ## Verification
 
 Run deterministic persistence, bot-cycle, and review-database isolation checks with:
@@ -83,7 +99,10 @@ No credentials are required: the runner disables `.env` loading, uses fake provi
 removed-after-run temporary databases, and blocks network connections, browser launches,
 subprocesses, and SQLite access outside its temporary directory. RC-102 checks also cover
 publication outcomes, restart holds, transaction rollback, and migration/restore against
-copied legacy fixtures. The operational database is not migrated by these tests.
+copied legacy fixtures. RC-103 checks cover `BrowserSession` lifecycle against a fake driver:
+one launch across multiple cycles, shared driver identity, no per-action `quit()`, bounded
+crash recovery, and clean shutdown on interruption. The operational database is not migrated
+by these tests.
 
 Model-backed voice review is separate:
 

@@ -1,11 +1,12 @@
-"""Manual test harness: prove utils/browser.py's WebDriver setup actually works, and
-surface (without hard-asserting) what's reachable against the live X site.
+"""Manual test harness: prove utils/browser.py's WebDriver setup and BrowserSession (RC-103)
+actually work against real Chrome, and surface (without hard-asserting) what's reachable
+against the live X site.
 
 Uses plain asserts for the parts within this codebase's control (Chrome launches headless,
 navigates, quits cleanly) -- not pytest, no automated suite exists yet (Phase 9). The
-X-specific check only ever calls browser.is_logged_in() (read-only) -- never log_in(),
-post_tweet(), or post_reply() -- so running this harness never touches a real account, even
-once credentials are configured. Run with:
+X-specific check only ever calls BrowserSession.ensure_ready()'s read-only is_logged_in()
+check -- never log_in(), post_tweet(), or post_reply() -- so running this harness never
+touches a real account, even once credentials are configured. Run with:
 
     python tests/manual_test_browser.py
 """
@@ -16,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import config  # noqa: E402
 from utils import browser  # noqa: E402
+from utils.browser import BrowserSession, SessionPaused  # noqa: E402
 
 
 def test_driver_launches_headless() -> None:
@@ -28,17 +30,21 @@ def test_driver_launches_headless() -> None:
     print("  headless Chrome launch + navigate + quit: OK")
 
 
-def test_x_reachability_and_login_state() -> None:
-    driver = browser.get_driver()
+def test_session_reachability_and_login_state() -> None:
+    session = BrowserSession()
     try:
-        logged_in = browser.is_logged_in(driver)
-        print(f"  x.com/home reachable, is_logged_in() -> {logged_in}")
+        try:
+            session.ensure_ready()
+            print("  BrowserSession authenticated against the persisted profile")
+        except SessionPaused:
+            print("  BrowserSession reached x.com/home but found no authenticated session "
+                  "(expected until a real login happens -- see resume_manual_login())")
     finally:
-        driver.quit()
+        session.close()
 
 
 def main() -> None:
-    print("Phase 6 browser smoke test")
+    print("RC-103 browser session smoke test")
     test_driver_launches_headless()
 
     if not config.TWITTER_USERNAME or not config.TWITTER_PASSWORD:
@@ -50,7 +56,7 @@ def main() -> None:
         )
         return
 
-    test_x_reachability_and_login_state()
+    test_session_reachability_and_login_state()
     print("\nAll browser checks that don't touch a real account passed.")
 
 

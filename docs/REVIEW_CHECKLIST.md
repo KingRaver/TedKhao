@@ -39,7 +39,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 |---|---|---|---|---|---|---|---|
 | 1 | RC-101 | High | Isolate tests and use production handlers (finding 8) | None | Verified | Codex | Phase 1 evidence below; `feat/phase-1-isolated-test-harnesses` |
 | 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Verified | Codex | Phase 2 evidence below; `feat/phase-2-publication-lifecycle` |
-| 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Planned | Unassigned | Pending |
+| 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Verified | Claude | Phase 3 evidence below; `feat/phase-3-persistent-browser` |
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Planned | Unassigned | Pending |
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Planned | Unassigned | Pending |
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Planned | Unassigned | Pending |
@@ -121,24 +121,58 @@ real confirmation is RC-104, browser ownership is RC-103. Not deployed.
 
 Files: `src/bot.py`, `src/utils/browser.py`, `src/signals/timeline_scraper.py`, configuration.
 
-- [ ] The orchestrator owns one driver across timer-loop cycles and passes it to timeline
+- [x] The orchestrator owns one driver across timer-loop cycles and passes it to timeline
       scraping, posting, and replies. Preserve the common source interface through an adapter
       or injected callable rather than adding browser ownership back to each operation.
-- [ ] Remove per-action driver creation and `quit()` calls. Close once on deliberate process
+- [x] Remove per-action driver creation and `quit()` calls. Close once on deliberate process
       shutdown; replace a driver only after a diagnosed browser failure.
-- [ ] Reuse a stable authenticated profile and prevent concurrent processes from sharing it.
-- [ ] Check authentication at startup and on evidence of expiry; avoid repeating login and
+- [x] Reuse a stable authenticated profile and prevent concurrent processes from sharing it.
+- [x] Check authentication at startup and on evidence of expiry; avoid repeating login and
       home-page navigation before every action.
-- [ ] Provide a visible-browser/manual-authentication path. Pause X actions for login changes,
+- [x] Provide a visible-browser/manual-authentication path. Pause X actions for login changes,
       verification challenges, rate limits, and account warnings, with an explicit resume path
       that verifies session health before continuing. Do not run repeated automatic login loops.
-- [ ] Document that `--once` ends the process and its browser; use the resident loop for a
+- [x] Document that `--once` ends the process and its browser; use the resident loop for a
       browser that stays open between scheduled cycles.
-- [ ] Fake-driver tests prove one launch across multiple cycles, shared driver identity,
+- [x] Fake-driver tests prove one launch across multiple cycles, shared driver identity,
       no per-action quits, bounded crash recovery, and clean shutdown on interruption.
 
 Evidence required: driver lifecycle/authentication-state tests. Persistent sessions reduce
 session churn; this work does not establish or promise avoidance of platform detection.
+
+RC-103 verification (2026-09-11, working tree based on `2401469`):
+`venv/bin/python tests/run_offline.py` passed lifecycle, publication, migration, cycle,
+voice-review isolation, and the new `tests/manual_test_browser_session.py` fake-driver checks:
+one Chrome launch across five simulated cycles (`browser.get_driver` call count == 1), shared
+`session.driver` identity, an auth check performed once at startup and again only after
+`flag_possibly_expired()` (not on every action), a headless session with no valid login
+raising `SessionPaused` without calling `log_in()`, `publish()`/`timeline_scraper.fetch()`
+never calling `driver.quit()`, one diagnosed crash (`InvalidSessionIdException`) triggering
+exactly one relaunch-and-retry with a second crash in the same call propagating, and a
+try/finally shutdown (standing in for `KeyboardInterrupt`) closing the driver exactly once
+with `close()` idempotent on a second call. `tests/manual_test_publication.py`'s RC-102 cases
+were updated for the new `publish(result, memory, session, target_url=None)` signature and
+additionally assert `driver.quit.call_count == 0` until `session.close()`, and that
+`live_posting=True` without a session raises `ValueError`.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+Live-Chrome verification (no offline mocks, no TWITTER_PASSWORD in `.env`):
+`venv/bin/python tests/manual_test_browser.py` launched real headless Chrome and confirmed
+`BrowserSession.ensure_ready()` raises `SessionPaused` cleanly against an unauthenticated
+persisted profile rather than looping login. A separate manual check started one live
+`BrowserSession`, confirmed a second concurrent session is refused with `RuntimeError` while
+the first is open, and confirmed a third session can acquire the profile lock immediately
+after `close()`. `venv/bin/python src/bot.py --once` (dry run, real Chrome, real
+`ANTHROPIC_API_KEY`, no `TWITTER_PASSWORD`) confirmed the end-to-end regression this phase
+had to avoid: the unauthenticated timeline fetch now logs a clear warning and degrades to an
+empty timeline instead of raising, and post generation still completes from domain signals
+alone (`phase=convergence register=awestruck signal=arxiv`) -- an earlier draft of this work
+let `SessionPaused` propagate out of `fetch_all_signals()` and would have blocked all dry-run
+post generation whenever no X session exists, which is this repo's actual current state. No
+login, posting, or reply was attempted against a real account; the profile lock released
+cleanly on process exit in every live run.
+No repository lint/typecheck/build command is configured. Not deployed. Real X selector
+behavior under `post_tweet()`/`post_reply()` and RC-104's confirmation contract remain
+unverified live per RC-104/RC-110.
 
 ## Phase 4: RC-104 — Confirm submission and reconcile ambiguity
 
@@ -293,6 +327,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | Date | Work ID | Revision / PR | Command or procedure | Result / limitations | Deployment |
 |---|---|---|---|---|---|
 | 2026-09-11 | Planning | Working tree | Review findings mapped to RC-101–RC-110 | Checklist created | None |
+| 2026-09-11 | RC-103 | `feat/phase-3-persistent-browser` | `venv/bin/python tests/run_offline.py`; `venv/bin/python tests/manual_test_browser.py` (live Chrome, no credentials) | Offline fake-driver session/crash/shutdown checks and RC-102 lifecycle regressions passed; live headless Chrome confirmed SessionPaused on no login and profile-lock exclusion | Not deployed |
 
 ## Decisions and change history
 
