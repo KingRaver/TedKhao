@@ -11,6 +11,14 @@ import requests
 import config
 
 
+class GenerationError(Exception):
+    """A provider's response was missing, null, or structurally malformed -- never a bare
+    IndexError/KeyError/AttributeError leaking out of one provider's specific response shape.
+    Engagement handlers (RC-105) treat this the same as empty generated text: an invalid
+    attempt to retry or, once bounded attempts are exhausted, an explicit generation failure.
+    """
+
+
 class LLMProvider(ABC):
     @abstractmethod
     def generate(self, prompt: str, system_prompt: str | None = None,
@@ -39,7 +47,15 @@ class AnthropicProvider(LLMProvider):
             system=system_prompt or "",
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.content[0].text.strip()
+        try:
+            text = response.content[0].text
+        except (IndexError, AttributeError) as error:
+            raise GenerationError(
+                f"Anthropic response had no usable text content: {error}"
+            ) from error
+        if text is None:
+            raise GenerationError("Anthropic response text content was null")
+        return text.strip()
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -74,8 +90,21 @@ class OpenAICompatibleProvider(LLMProvider):
             timeout=60,
         )
         response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
+        try:
+            data = response.json()
+        except ValueError as error:
+            raise GenerationError(
+                f"Local provider response was not valid JSON: {error}"
+            ) from error
+        try:
+            text = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise GenerationError(
+                f"Local provider response was missing expected fields: {error}"
+            ) from error
+        if text is None:
+            raise GenerationError("Local provider response content was null")
+        return text.strip()
 
 
 def get_provider() -> LLMProvider:

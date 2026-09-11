@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-105: `llm_provider.py` gained `GenerationError`, raised by `AnthropicProvider.generate()`
+  and `OpenAICompatibleProvider.generate()` when a response is missing/null/malformed (empty
+  `content`, null `text`/`content`, missing `choices`, a non-JSON body) instead of leaking a
+  bare `IndexError`/`KeyError`/`AttributeError`/`ValueError`. `engagement.reply_handler`'s new
+  `_generate_nonempty()` (shared with `post_handler.py` the same way `_sentence_aware_truncate`
+  already is) retries initial generation up to the new `config.REPLY_GENERATION_ATTEMPTS`/
+  `POST_GENERATION_ATTEMPTS` (2 each) on empty-after-strip text or a caught `GenerationError`,
+  and raises rather than returning empty text once attempts are exhausted --
+  `generate_post()`/`generate_reply()` call this before `memory.save_draft()`, so a failure
+  never persists a draft or holds a reply target. Fixed both `_ensure_length()` shortening
+  loops (reply and post) to stop accepting an empty/malformed shorten attempt as valid output
+  (`len("") <= max_chars` previously let that through, matching the review's "empty post
+  accepted and persisted" finding) -- a wasted attempt now leaves the last known-valid
+  candidate in place for the existing `_sentence_aware_truncate()` fallback instead. New
+  `tests/manual_test_generation_validation.py` covers both providers' malformed-response
+  handling plus whitespace-only, provider-error, bounded-recovery, empty-shorten, and the
+  pre-existing overlength-truncation cases; wired into `tests/run_offline.py`.
 - RC-104: `utils.browser.post_tweet()`/`post_reply()` now observe X's actual response after
   the submit click instead of treating a completed click as success --
   `_await_submission_outcome()` waits (bounded) for either a "sent" toast carrying the new
