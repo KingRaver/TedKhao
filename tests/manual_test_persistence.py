@@ -85,8 +85,8 @@ def test_persona_memory_survives_restart(db_path: str) -> None:
     assert Phase.ANNIVERSARY in second_session.recent_phases, (
         "a fresh PersonaMemory instance should load prior phases from the database"
     )
-    assert second_session.has_replied("restart-test-1"), (
-        "a fresh PersonaMemory instance should load prior replied_post_ids from the database"
+    assert not second_session.has_replied("restart-test-1"), (
+        "draft replies must not become successful replies after restart"
     )
 
     print("  PersonaMemory state visible to a brand-new instance (simulated restart): OK")
@@ -102,11 +102,11 @@ def test_reply_handler_wiring(db_path: str) -> None:
 
     result = generate_reply(fake_post, FakeProvider(), memory)
     assert result["reply_text"], "generate_reply should return non-empty reply text"
-    assert database.has_replied("reply-handler-wiring-test", db_path=db_path), (
-        "generate_reply should persist to replied_posts via memory.record_reply"
+    assert not database.has_replied("reply-handler-wiring-test", db_path=db_path), (
+        "generate_reply must not mark a draft as published"
     )
 
-    print("  engagement.reply_handler.generate_reply() -> replied_posts row: OK")
+    print("  engagement.reply_handler.generate_reply() -> draft without publication: OK")
 
 
 def main() -> None:

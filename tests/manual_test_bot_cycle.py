@@ -111,16 +111,16 @@ def test_run_reply_cycle(db_path: str) -> None:
     replied_ids = {r["post"]["id"] for r in results}
     assert replied_ids == {"1111111111", "2222222222"}
     for r in results:
-        assert database.has_replied(r["post"]["id"], db_path=db_path)
+        assert not database.has_replied(r["post"]["id"], db_path=db_path)
 
-    # Re-running the same cycle should skip both -- already-replied dedup via memory.has_replied.
+    # Dry runs do not consume reply targets.
     second_pass = bot.run_reply_cycle(
         FakeProvider(), memory, _FAKE_TIMELINE_SIGNALS, live_posting=False, max_replies=3,
     )
-    assert second_pass == [], "already-replied signals must be skipped on a second pass"
+    assert len(second_pass) == 2, "dry runs must leave targets eligible"
 
     print("  run_reply_cycle (dry run): handle/id parsing, generation, persistence, "
-          "already-replied dedup, no browser call: OK")
+          "draft eligibility, no browser call: OK")
 
 
 def test_run_reply_cycle_respects_max_replies(db_path: str) -> None:

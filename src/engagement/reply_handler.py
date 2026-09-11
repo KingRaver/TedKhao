@@ -36,17 +36,11 @@ def generate_reply(post: dict, llm_provider: LLMProvider, memory: PersonaMemory)
     reply_text = llm_provider.generate(prompt, max_tokens=200, temperature=0.9)
     reply_text = _ensure_length(reply_text, llm_provider)
 
-    memory.record_state(register)
-    memory.record_reply(
-        post_id=post["id"],
-        post_author=post.get("author_handle", "@someone"),
-        post_content=post["text"],
-        reply_content=reply_text,
-        register=register,
-    )
+    publication_id, _ = memory.save_draft(reply_text, register, target=post)
 
     return {
         "post": post,
+        "publication_id": publication_id,
         "analysis": analysis,
         "register": register,
         "reply_text": reply_text,

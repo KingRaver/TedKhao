@@ -45,6 +45,7 @@ tedkhao/
 │   │   ├── __init__.py
 │   │   ├── content_analyzer.py    # Classifies incoming posts: topic, sentiment, question/opinion
 │   │   ├── reply_handler.py       # Scores reply opportunities, generates replies via prompt engine
+│   │   ├── publication.py         # RC-102 durable publication transitions and browser boundary
 │   │   └── post_handler.py        # Original-post equivalent of reply_handler.py (Phase 7)
 │   │
 │   └── utils/
@@ -59,6 +60,7 @@ tedkhao/
 ├── logs/                          # Application logs (gitignored)
 │
 └── tests/
+    ├── manual_test_publication.py # RC-102 lifecycle, atomicity, copied migration/restore checks
     ├── run_offline.py             # RC-101 offline persistence/cycle/isolation checks
     ├── review_database.py         # Temporary or explicitly selected voice-review storage
     ├── test_state.py              # Register/Phase classification tests
