@@ -136,6 +136,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TWITTER_USERNAME`/`TWITTER_PASSWORD` remain unset in `.env`.
 
 ### Changed
+- Doc freshness pass after RC-101-104 merged to `main`: `README.md`, `docs/PUBLICATION_MIGRATION.md`,
+  and `docs/SPEC.md` still described RC-104's confirmation behavior as future work; corrected
+  to describe what `utils.browser.post_tweet()`/`post_reply()` actually do now. `docs/STRUCTURE.md`'s
+  file tree was missing several real `docs/`/`tests/` files (including the new RC-104 test) and
+  listed Phase 9 test files that were never created; brought in line with the actual repo.
+  `CLAUDE.md` never mentioned `docs/REVIEW_CHECKLIST.md` -- the active post-launch remediation
+  tracker -- in its doc-reading order or re-entry checklist; added it to both, and clarified
+  that its "Current Status" section covers only the original build, not remediation.
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
   stale "no code written yet" status, added local-model testing notes (`gemma4:12b` and
   `gpt-oss:20b` tested and deleted, with why), and stated standing conventions plainly rather
