@@ -21,53 +21,57 @@ from review_database import review_database  # noqa: E402
 # intentionally left out -- that heuristic can't reach it yet (no semantic/sentiment
 # analysis over the pool), so there's no fake pool that would exercise it honestly.
 SCENARIOS: list[tuple[str, list[Signal]]] = [
-    ("Convergence (two domains high-novelty)", [
+    ("Convergence (two domains high-novelty, sharing evidence of a relationship)", [
         Signal(
             source="arxiv", domain="technology",
-            title="New paper on diffusion models for protein folding",
-            summary="Researchers combine diffusion models with graph transformers to predict "
-                    "novel protein structures faster than AlphaFold's original pipeline.",
-            url="https://arxiv.org/abs/fake1", novelty_score=0.82,
+            title="New diffusion-model pipeline flags disputed Rembrandt attributions",
+            summary="Researchers train a diffusion-based classifier on brushstroke patterns to "
+                    "help authenticate paintings attributed to Rembrandt, flagging several works "
+                    "long catalogued as workshop copies for further review.",
+            url="https://arxiv.org/abs/fake1", novelty_score=0.82, novelty_evidenced=True,
         ),
         Signal(
             source="met_museum", domain="arts",
             title="Newly attributed Rembrandt drawing found in a private collection",
             summary="A sketch long catalogued as 'circle of Rembrandt' has been reattributed to "
                     "the artist himself after pigment analysis.",
-            url="https://example.org/met/fake1", novelty_score=0.75,
+            url="https://example.org/met/fake1", novelty_score=0.75, novelty_evidenced=False,
         ),
         Signal(
             source="hackernews", domain="technology",
             title="Show HN: I built a JPEG decoder from scratch in 200 lines",
             url="https://news.ycombinator.com/item?id=fake1", novelty_score=0.4,
+            novelty_evidenced=True,
         ),
     ]),
-    ("Breakthrough (single very high novelty)", [
+    ("Breakthrough (single very high, novelty-evidenced signal)", [
         Signal(
             source="arxiv", domain="technology",
             title="Room-temperature superconductivity claim replicated by second lab",
             summary="A second independent team reports replicating last month's room-temperature "
                     "superconductor result under ambient pressure.",
-            url="https://arxiv.org/abs/fake2", novelty_score=0.93,
+            url="https://arxiv.org/abs/fake2", novelty_score=0.93, novelty_evidenced=True,
         ),
         Signal(
             source="hackernews", domain="technology",
             title="Ask HN: best way to learn Rust in 2026",
             url="https://news.ycombinator.com/item?id=fake2", novelty_score=0.2,
+            novelty_evidenced=True,
         ),
     ]),
-    ("Anniversary (top signal is wikipedia_otd)", [
+    ("Anniversary (top signal is wikipedia_otd, rank alone isn't breakthrough evidence)", [
         Signal(
             source="wikipedia_otd", domain="history",
             title="On this day: the Rosetta Stone is rediscovered near Rosetta, Egypt (1799)",
             summary="French soldiers rebuilding a fort near the town of Rosetta find a stone slab "
                     "inscribed in three scripts.",
             url="https://en.wikipedia.org/wiki/Rosetta_Stone", novelty_score=0.5,
+            novelty_evidenced=False,
         ),
         Signal(
             source="met_museum", domain="arts",
             title="Conservation notes on a 15th-century Flemish altarpiece",
-            url="https://example.org/met/fake2", novelty_score=0.3,
+            url="https://example.org/met/fake2", novelty_score=0.3, novelty_evidenced=False,
         ),
     ]),
     ("Excavation (top signal is low novelty)", [
@@ -76,7 +80,7 @@ SCENARIOS: list[tuple[str, list[Signal]]] = [
             title="An obscure 1920s color-theory pamphlet by a little-known Bauhaus student",
             summary="A rediscovered pamphlet outlines a color-mixing notation system that "
                     "predates Pantone by decades.",
-            url="https://example.org/met/fake3", novelty_score=0.15,
+            url="https://example.org/met/fake3", novelty_score=0.15, novelty_evidenced=False,
         ),
     ]),
     ("Quiet (mid novelty, nothing pressing)", [

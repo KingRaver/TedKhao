@@ -46,5 +46,6 @@ def fetch(max_results: int = 10) -> list[Signal]:
             summary=" ".join(summary.split()),
             url=url,
             novelty_score=rank_novelty(i, len(entries)),
+            novelty_evidenced=True,  # sorted by real submittedDate, not arbitrary order
         ))
     return signals

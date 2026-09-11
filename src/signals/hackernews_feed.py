@@ -32,5 +32,6 @@ def fetch(max_results: int = 10) -> list[Signal]:
             summary=f"{item.get('score', 0)} points, {item.get('descendants', 0)} comments",
             url=item.get("url") or f"https://news.ycombinator.com/item?id={story_id}",
             novelty_score=rank_novelty(i, len(story_ids)),
+            novelty_evidenced=True,  # sorted by real current top-stories/trending rank
         ))
     return signals

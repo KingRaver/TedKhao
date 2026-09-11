@@ -39,5 +39,6 @@ def fetch(max_results: int = 10) -> list[Signal]:
             summary=(page.get("extract") or "").strip(),
             url=page_url,
             novelty_score=rank_novelty(i, len(events)),
+            novelty_evidenced=False,  # the API's event order isn't a significance ranking
         ))
     return signals

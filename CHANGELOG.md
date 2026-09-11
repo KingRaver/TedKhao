@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-106: `signals.base.Signal` gained `novelty_evidenced: bool = False`, set `True` only by
+  `arxiv_feed.py`/`hackernews_feed.py` (whose fetch order is real freshness/trending evidence)
+  and left `False` by `history_today.py`/`arts_feed.py`/`timeline_scraper.py` (whose order
+  isn't a significance ranking). `persona.state.select_phase_register_and_signal()` now: (1)
+  breaks ties on `novelty_score` with a seeded random choice over the tied signals
+  (`_select_top_signal()`) instead of list order, so arxiv no longer wins every tie just for
+  being fetched first; (2) requires `novelty_evidenced` for Breakthrough, so a first-ranked
+  historical event or museum object can't become a breakthrough solely because rank 0 scores
+  1.0 -- fixes the review's "history-only pool incorrectly selected Breakthrough" finding; (3)
+  requires two different-domain high-novelty signals to share significant vocabulary
+  (`_signals_rhyme()`/`_find_convergent_pair()`) for Convergence, instead of firing on domain
+  count alone -- unrelated high-novelty signals now fall through to a supported single-signal
+  phase. Contested remains explicitly unreachable, unchanged. New
+  `tests/manual_test_state_selection.py` covers tied top scores (order-independence and
+  cross-seed fairness), history-only and arts-only top-rank pools, evidenced-vs-unevidenced
+  Breakthrough eligibility, unrelated vs. related cross-domain Convergence candidates, and the
+  empty pool; wired into `tests/run_offline.py`. `tests/manual_test_posts.py`'s scenario
+  fixtures were updated to keep demonstrating the phase each is named for under the new rules.
 - RC-105: `llm_provider.py` gained `GenerationError`, raised by `AnthropicProvider.generate()`
   and `OpenAICompatibleProvider.generate()` when a response is missing/null/malformed (empty
   `content`, null `text`/`content`, missing `choices`, a non-JSON body) instead of leaking a

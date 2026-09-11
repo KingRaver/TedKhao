@@ -42,7 +42,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Verified | Claude | Phase 3 evidence below; `feat/phase-3-persistent-browser` |
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Verified | Claude | Phase 4 evidence below; `feat/phase-4-confirm-submission` |
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Verified | Claude | Phase 5 evidence below; `feat/phase-5-validate-output` |
-| 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Planned | Unassigned | Pending |
+| 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Verified | Claude | Phase 6 evidence below; `feat/phase-6-source-selection` |
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Planned | Unassigned | Pending |
 | 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Planned | Unassigned | Pending |
 | 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Planned | Unassigned | Pending |
@@ -268,18 +268,56 @@ blocking. Not deployed.
 
 Files: `src/signals/base.py`, signal fetchers, `src/persona/state.py`.
 
-- [ ] Replace first-in-pool tie bias with an explicit, testable selection policy that does
+- [x] Replace first-in-pool tie bias with an explicit, testable selection policy that does
       not systematically favor arXiv because it is fetched first.
-- [ ] Distinguish source rank from evidence of novelty; a first-ranked historical event or
+- [x] Distinguish source rank from evidence of novelty; a first-ranked historical event or
       museum object must not become a breakthrough solely because its score is 1.0.
-- [ ] Require evidence of a relationship for Convergence. Multiple available domains alone
+- [x] Require evidence of a relationship for Convergence. Multiple available domains alone
       do not qualify; use a supported single-signal phase when no relationship is established.
-- [ ] Keep unsupported Contested detection explicitly deferred rather than inventing a proxy.
-- [ ] Test actual fetcher-shaped pools with tied top scores, history-only and arts-only pools,
+- [x] Keep unsupported Contested detection explicitly deferred rather than inventing a proxy.
+- [x] Test actual fetcher-shaped pools with tied top scores, history-only and arts-only pools,
       unrelated cross-domain items, and the empty pool using deterministic fixtures/seeds.
 
 Evidence required: expected/actual phase and selection cases, plus the selected policy's
 decision record. Preserve the existing taxonomy unless a documented change is necessary.
+
+RC-106 verification (2026-09-11, working tree based on `91e22fa`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_state_selection.py`
+checks alongside every existing offline check. `signals/base.py`'s `Signal` gained
+`novelty_evidenced: bool = False`, set `True` only by the two sources whose fetch order is
+itself evidence of freshness or trending significance (`arxiv_feed.py`: sorted by real
+`submittedDate`; `hackernews_feed.py`: real current top-stories rank) and left explicitly
+`False` by the three sources whose order isn't a significance ranking (`history_today.py`'s
+"on this day" order, `arts_feed.py`'s `random.sample()`, `timeline_scraper.py`'s scroll
+position). `persona/state.py`'s `select_phase_register_and_signal()` now applies three
+decisions instead of the prior `max()`/domain-count heuristic: (1) `_select_top_signal()`
+breaks ties on `novelty_score` with `random.choice()` over the tied signals rather than list
+order, so arxiv (always fetched first into `bot.py`'s pool) no longer wins every tie by
+construction; verified order-independent given a fixed seed and, across 40 seeds, more than
+one source won. (2) Breakthrough now requires `top_signal.novelty_evidenced` in addition to
+the existing score threshold; verified a history-only pool (top rank 1.0) now resolves to
+Anniversary instead of incorrectly Breakthrough (the exact baseline-evidence regression), and
+an arts-only pool (top rank 1.0 from a random sample) resolves to Quiet, not Breakthrough,
+while a genuinely evidenced top signal (arxiv) still reaches Breakthrough normally. (3)
+Convergence now requires `_find_convergent_pair()` to find two different-domain high-novelty
+signals with shared significant vocabulary (`_signals_rhyme()`, a 5+-char non-stopword
+title/summary word overlap) rather than firing on domain count alone; verified two unrelated
+high-novelty cross-domain signals fall through to the evidenced top signal's Breakthrough
+instead of Convergence (the baseline-evidence tied-score-selects-Convergence-and-arxiv-wins
+regression, now resolved at both the tie-break and relationship layers), while two
+thematically related cross-domain signals (sharing "Rembrandt") do resolve to Convergence.
+Contested was left unchanged/unreachable, matching its own explicitly-deferred rationale.
+`tests/manual_test_posts.py`'s Convergence/Breakthrough/Anniversary scenario fixtures were
+updated (the Convergence pair now shares "Rembrandt"; evidenced sources set
+`novelty_evidenced=True`) so they still demonstrate the phase named in each scenario under the
+new rules; each scenario's printed `phase:` line was confirmed to match its name.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured. The exact novelty/significance
+scoring formula remains an open question in `docs/SPEC.md`; this phase fixes the two
+structural bugs the baseline review evidence identified (fetch-order tie bias, rank-as-novelty
+conflation) and adds an explicit, evidence-gated relationship check for Convergence, without
+tuning the underlying per-source scoring. No model or live-browser validation was performed
+or needed for this phase. Not deployed.
 
 ## Phase 7: RC-107 — Remember previously covered sources
 
@@ -383,6 +421,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | 2026-09-11 | Planning | Working tree | Review findings mapped to RC-101–RC-110 | Checklist created | None |
 | 2026-09-11 | RC-103 | `feat/phase-3-persistent-browser` | `venv/bin/python tests/run_offline.py`; `venv/bin/python tests/manual_test_browser.py` (live Chrome, no credentials) | Offline fake-driver session/crash/shutdown checks and RC-102 lifecycle regressions passed; live headless Chrome confirmed SessionPaused on no login and profile-lock exclusion | Not deployed |
 | 2026-09-11 | RC-105 | `feat/phase-5-validate-output` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_generation_validation.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Malformed/missing/null provider responses raise `GenerationError` (both providers); empty/malformed initial or shorten output is retried within bounded attempts and never persists a draft or holds a reply target; existing overlength truncation path still enforces the hard limit | Not deployed |
+| 2026-09-11 | RC-106 | `feat/phase-6-source-selection` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_state_selection.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `Signal.novelty_evidenced`, set by fetchers whose rank is real freshness/trending evidence (arxiv, hackernews) and withheld where it isn't (wikipedia_otd, met_museum, x_timeline); tie-breaking now uses a seeded random choice over tied signals instead of list order; Breakthrough requires `novelty_evidenced`; Convergence requires two different-domain high-novelty signals to share significant vocabulary. History-only and arts-only top-rank-1.0 pools no longer resolve to Breakthrough; unrelated cross-domain high-novelty signals no longer resolve to Convergence; both baseline-evidence regressions fixed | Not deployed |
 
 ## Decisions and change history
 
