@@ -107,9 +107,13 @@ Read in this order when picking up the project after time away:
 ## Current Status
 
 Phases 1 (Persona Engine), 2 (Reply Pipeline), 3 (Signal Ingestion), 4 (Original Post
-Generation), and 5 (Persistence) are built and manually tested — see `docs/SCAFFOLDING.md` for
-the checkbox-level breakdown. Everything from Phase 6 (X/Twitter Integration) onward has no
-code yet.
+Generation), 5 (Persistence), and 7 (Orchestration) are built and manually tested. Phase 6
+(X/Twitter Integration) is built but only partially verified — see `docs/SCAFFOLDING.md` for
+the checkbox-level breakdown. Both Phase 6's actual posting/login and Phase 7's reply-cycle
+live-posting path remain unverified end-to-end for the same reason: `TWITTER_USERNAME`/
+`TWITTER_PASSWORD` are still empty in this repo's `.env`. Phase 8 (Local-Model Deployment,
+partially validated) and Phase 9 (Automated Tests) have no code yet beyond Phase 8's confirmed
+same-machine Ollama path.
 
 **Open item carried over from Phase 2, not resolved, now also observed on the post path**:
 voice quality hasn't been validated across enough trials to trust it, for either replies or
@@ -120,8 +124,11 @@ more than one occasion — most recently, `build_post_prompt()`'s no-signal bran
 detail during Phase 4's own test run despite an explicit instruction not to invent facts when
 there's no signal to anchor to. Don't treat any single test run as a verdict on this.
 
-**Next up**: either keep gathering reply/post-quality trials, or start Phase 6 (X/Twitter
-Integration) — see `docs/SCAFFOLDING.md` for the full list either way.
+**Next up**: add real `TWITTER_USERNAME`/`TWITTER_PASSWORD` to `.env` (with a deliberate,
+explicit go-ahead before running live against a real X account) to unblock end-to-end
+verification of Phase 6's login/posting and Phase 7's reply cycle, keep gathering
+reply/post-quality trials, or start Phase 8/9 — see `docs/SCAFFOLDING.md` for the full list
+either way.
 
 ## Local Model Testing Notes
 

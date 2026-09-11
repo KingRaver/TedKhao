@@ -30,6 +30,13 @@ class PersonaMemory:
         ]
         self.replied_post_ids: set[str] = database.get_replied_post_ids(db_path)
 
+    @property
+    def db_path(self) -> Optional[str]:
+        """The database this memory instance reads/writes -- callers making their own direct
+        database.* calls alongside a PersonaMemory (e.g. engagement.post_handler) should pass
+        this through rather than silently hitting config.DATABASE_PATH's default."""
+        return self._db_path
+
     def record_register(self, register: Register) -> None:
         self.recent_registers.append(register)
         self.recent_registers = self.recent_registers[-self._capacity:]
