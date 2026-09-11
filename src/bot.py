@@ -16,13 +16,13 @@ import logging
 import time
 from urllib.parse import urlparse
 
+from engagement.publication import publish
 from engagement.post_handler import generate_post
 from engagement.reply_handler import generate_reply
 from llm_provider import get_provider
 from persona.memory import PersonaMemory
 from signals import arts_feed, arxiv_feed, hackernews_feed, history_today, timeline_scraper
 from signals.base import Signal
-from utils import browser
 import config
 
 logger = logging.getLogger("tedkhao.bot")
@@ -77,13 +77,7 @@ def run_post_cycle(provider, memory: PersonaMemory, domain_signals: list[Signal]
                 len(result["post_text"]))
 
     if live_posting:
-        driver = browser.get_driver()
-        try:
-            browser.ensure_logged_in(driver)
-            browser.post_tweet(driver, result["post_text"])
-            logger.info("post published live")
-        finally:
-            driver.quit()
+        result['publication_outcome'] = publish(result, memory)
 
     return result
 
@@ -96,11 +90,12 @@ def run_reply_cycle(provider, memory: PersonaMemory, timeline_signals: list[Sign
             break
 
         author_handle, post_id = _parse_x_post_url(signal.url)
-        if not post_id or memory.has_replied(post_id):
+        if not post_id or memory.reply_is_held(post_id):
             continue
 
         post = {
             "id": post_id,
+            "url": signal.url,
             "author_handle": author_handle or "@someone",
             "text": signal.summary or signal.title,
         }
@@ -110,13 +105,7 @@ def run_reply_cycle(provider, memory: PersonaMemory, timeline_signals: list[Sign
                     post["author_handle"], result["register"].value, len(result["reply_text"]))
 
         if live_posting:
-            driver = browser.get_driver()
-            try:
-                browser.ensure_logged_in(driver)
-                browser.post_reply(driver, signal.url, result["reply_text"])
-                logger.info("reply published live")
-            finally:
-                driver.quit()
+            result['publication_outcome'] = publish(result, memory, signal.url)
 
         results.append(result)
 

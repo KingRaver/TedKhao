@@ -38,7 +38,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | Phase | ID | Priority | Work | Dependencies | Status | Owner | Change / evidence |
 |---|---|---|---|---|---|---|---|
 | 1 | RC-101 | High | Isolate tests and use production handlers (finding 8) | None | Verified | Codex | Phase 1 evidence below; `feat/phase-1-isolated-test-harnesses` |
-| 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Planned | Unassigned | Pending |
+| 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Verified | Codex | Phase 2 evidence below; `feat/phase-2-publication-lifecycle` |
 | 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Planned | Unassigned | Pending |
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Planned | Unassigned | Pending |
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Planned | Unassigned | Pending |
@@ -83,22 +83,37 @@ for RC-102. No repository lint/typecheck/build command is configured. Not deploy
 
 Files: `src/database.py`, `src/persona/memory.py`, engagement handlers, `src/bot.py`.
 
-- [ ] Define and persist draft, attempted, confirmed, failed, and uncertain outcomes, including
+- [x] Define and persist draft, attempted, confirmed, failed, and uncertain outcomes, including
       timestamps, target identity, and external publication ID/URL when known.
-- [ ] Generation saves a draft; it does not set publication timestamps or mark a target
+- [x] Generation saves a draft; it does not set publication timestamps or mark a target
       successfully replied to. Dry runs remain distinguishable from live attempts.
-- [ ] Confirmed replies suppress new replies across restarts. Uncertain attempts are held
+- [x] Confirmed replies suppress new replies across restarts. Uncertain attempts are held
       for reconciliation, not blindly retried; failed attempts remain eligible for controlled retry.
-- [ ] Commit related database changes atomically and update in-memory publication state only
+- [x] Commit related database changes atomically and update in-memory publication state only
       after successful persistence.
-- [ ] Provide a versioned migration preserving existing rows. Existing rows lack proof of
+- [x] Provide a versioned migration preserving existing rows. Existing rows lack proof of
       publication: retain them as legacy/unknown and exclude them from automatic retries until
       reconciled. Validate migration against a copied fixture, with backup/rollback instructions.
-- [ ] Regression checks cover dry-run then live eligibility, browser failure before submission,
+- [x] Regression checks cover dry-run then live eligibility, browser failure before submission,
       successful confirmation, restart recovery, and database failure without false success.
 
 Evidence required: lifecycle tests and migration results; no migration of the operational
 database is needed to verify the implementation against fixtures.
+
+RC-102 verification (2026-09-11, working tree based on `aa5e459`):
+`venv/bin/python tests/run_offline.py` passed lifecycle, copied legacy migration and restore,
+transaction rollback, persistence, cycle, and voice-review isolation checks. Regression
+fixtures exercise dry-run then live eligibility, pre-submission failure, confirmed reply
+suppression after restart, click-only/exception uncertainty, interrupted attempt holds,
+explicit reconciliation, duplicate-attempt rejection, and database failure without false
+in-memory success. Original-post timestamps/source use are set only on confirmation.
+Migration version 1 preserves all prior table rows and marks their publications legacy_unknown;
+idempotence and failed-migration rollback were verified on copies. Backup/rollback and
+reconciliation procedure: [PUBLICATION_MIGRATION.md](PUBLICATION_MIGRATION.md).
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No lint/typecheck/build command is configured. No operational database was migrated and
+no real browser/model call was made. Existing click-only browser results remain uncertain;
+real confirmation is RC-104, browser ownership is RC-103. Not deployed.
 
 ## Phase 3: RC-103 — Persistent browser ownership and authentication
 

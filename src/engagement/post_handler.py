@@ -11,7 +11,6 @@ from persona.prompts import build_post_prompt, build_shorten_prompt
 from persona.state import select_phase_register_and_signal
 from signals.base import Signal
 import config
-import database
 
 
 def generate_post(signals: list[Signal], llm_provider: LLMProvider, memory: PersonaMemory) -> dict:
@@ -33,18 +32,11 @@ def generate_post(signals: list[Signal], llm_provider: LLMProvider, memory: Pers
     post_text = llm_provider.generate(prompt, max_tokens=250, temperature=0.9)
     post_text = _ensure_length(post_text, llm_provider)
 
-    signal_id = None
-    if signal is not None:
-        signal_id = database.insert_signal(signal, db_path=memory.db_path)
-        database.mark_signal_used(signal_id, db_path=memory.db_path)
-
-    memory.record_state(register, phase, triggering_signal_id=signal_id)
-    post_id = database.insert_post(
-        post_text, register.value, phase.value, signal_id=signal_id, db_path=memory.db_path,
-    )
+    publication_id, post_id = memory.save_draft(post_text, register, phase, signal)
 
     return {
         "post_id": post_id,
+        "publication_id": publication_id,
         "post_text": post_text,
         "phase": phase,
         "register": register,

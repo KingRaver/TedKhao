@@ -1,14 +1,9 @@
 """Anti-repetition tracking.
 
-Persisted across restarts via database.py (docs/SPEC.md's `state_history` / `replied_posts`
-tables) as of Phase 5 -- previously in-process-only. On construction, PersonaMemory loads its
-recent history from the database so a freshly-started process picks up where the last one left
-off, instead of starting anti-repetition tracking from empty every time the bot restarts.
-
-record_register()/record_phase()/mark_replied() remain simple in-memory-only primitives (kept
-for callers that only need local tracking, e.g. tests). The persisting entry points are
-record_state() and record_reply() -- both update the in-memory lists/set *and* write through
-to the database in one call, so production call sites don't have to remember to do both.
+Generation history and confirmed reply IDs load from SQLite on construction.
+Drafts do not consume targets. Publication holds are read from the database so
+attempted, uncertain, and legacy rows survive restarts without implying success.
+All production writes commit before updating the in-memory history or success set.
 """
 from typing import Optional
 
@@ -59,27 +54,33 @@ class PersonaMemory:
         produces a Register -- pass phase only from the post-generation path, which always
         has one (select_phase_register_and_signal).
         """
-        self.record_register(register)
-        if phase is not None:
-            self.record_phase(phase)
-
         database.insert_state_history(
             register=register.value,
             phase=phase.value if phase else None,
             triggering_signal_id=triggering_signal_id,
             db_path=self._db_path,
         )
+        self.record_register(register)
+        if phase is not None:
+            self.record_phase(phase)
+
+    def save_draft(self, content, register, phase=None, signal=None, target=None):
+        ids = database.save_draft(content, register.value, phase.value if phase else None,
+                                  signal, target, self._db_path)
+        self.record_register(register)
+        if phase is not None:
+            self.record_phase(phase)
+        return ids
+
+    def reply_is_held(self, post_id):
+        return database.reply_is_held(post_id, self._db_path)
+
+    def transition_publication(self, publication_id, status, **kwargs):
+        database.transition_publication(publication_id, status, db_path=self._db_path, **kwargs)
+        self.replied_post_ids = database.get_replied_post_ids(self._db_path)
 
     def record_reply(self, post_id: str, post_author: Optional[str], post_content: Optional[str],
-                      reply_content: str, register: Register) -> None:
-        """Update the in-memory dedup set and persist one replied_posts row in a single call."""
-        self.mark_replied(post_id)
-
-        database.insert_replied_post(
-            post_id=post_id,
-            post_author=post_author,
-            post_content=post_content,
-            reply_content=reply_content,
-            register=register.value,
-            db_path=self._db_path,
-        )
+                      reply_content: str, register: Register) -> int:
+        """Compatibility entry point: recording generated text creates a draft only."""
+        return self.save_draft(reply_content, register, target={
+            'id': post_id, 'author_handle': post_author, 'text': post_content})[0]

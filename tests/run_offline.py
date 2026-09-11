@@ -44,10 +44,12 @@ def main():
             assert not config.ANTHROPIC_API_KEY and not config.TWITTER_PASSWORD
             with patch.object(browser, 'get_driver', forbidden), \
                  patch.object(llm_provider, 'get_provider', forbidden):
+                import manual_test_publication as publication
+                publication.main()
                 persistence.main()
                 cycle.main()
                 for harness, table, expected in ((posts, 'posts', len(posts.SCENARIOS)),
-                                                  (replies, 'replied_posts', len(replies.FAKE_POSTS))):
+                                                  (replies, 'publications', len(replies.FAKE_POSTS))):
                     paths = []
                     real_memory = harness.PersonaMemory
 

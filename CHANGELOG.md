@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-102: transactional publication drafts, durable attempts/outcomes and event history,
+  confirmed-reply deduplication, restart-safe uncertainty/legacy holds, and schema-version-1
+  migration preserving historical rows. Click-only browser returns remain uncertain pending
+  RC-104 confirmation. Added offline lifecycle/migration regressions and backup/rollback docs.
 - RC-101: isolated voice-review databases with explicit `--review-db` retention, production
   `generate_post()` reuse, and `tests/run_offline.py` covering persistence, cycles, and
   database isolation without credentials, network access, or browser launches.

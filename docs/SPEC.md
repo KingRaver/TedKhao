@@ -165,6 +165,16 @@ provider," and which machine (or hosted API) answers that call is purely a confi
 
 ## Data Models / Schema
 
+RC-102 adds versioned `publications` and `publication_events` tables as the authoritative
+publication lifecycle. Generation saves drafts atomically with persona/source history;
+`posted_at` and `used_at` are NULL for new drafts and set only on confirmation. Historical
+rows remain unchanged and map to `legacy_unknown`, held for reconciliation. Confirmed
+reply IDs alone populate the success set; attempted/uncertain/legacy targets also block
+submission. See [publication storage and migration](PUBLICATION_MIGRATION.md) for the
+current schema contract, transition rules, and backup/rollback procedure. The legacy table
+shapes below remain for compatibility; their historical timestamps are not proof of publication.
+
+
 SQLite, mirroring the reference architecture's proven table shapes with content adapted to
 signals instead of market data.
 

@@ -64,6 +64,13 @@ Running `src/bot.py` starts the full analysis/post cycle: fetch signals → clas
 register/phase → generate content or scan the timeline for reply opportunities → post →
 log. Cadence and behavior are controlled via `src/config.py` and `.env`.
 
+Generation saves drafts; dry runs do not consume reply targets. Live publication attempts
+are recorded before browser access. Confirmed replies suppress duplicates, while uncertain
+and legacy outcomes are held for reconciliation. Current browser methods provide no
+confirmation evidence, so submissions remain uncertain pending RC-104.
+Before the first startup with an existing database, follow the
+[RC-102 backup and migration procedure](docs/PUBLICATION_MIGRATION.md).
+
 ## Verification
 
 Run deterministic persistence, bot-cycle, and review-database isolation checks with:
@@ -74,8 +81,9 @@ venv/bin/python tests/run_offline.py
 
 No credentials are required: the runner disables `.env` loading, uses fake providers and
 removed-after-run temporary databases, and blocks network connections, browser launches,
-subprocesses, and SQLite access outside its temporary directory. Existing dry-run reply
-persistence assertions describe current behavior; publication lifecycle correction is RC-102.
+subprocesses, and SQLite access outside its temporary directory. RC-102 checks also cover
+publication outcomes, restart holds, transaction rollback, and migration/restore against
+copied legacy fixtures. The operational database is not migrated by these tests.
 
 Model-backed voice review is separate:
 
