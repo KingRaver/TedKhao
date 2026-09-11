@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-109: `bot.run_post_cycle()`/`run_reply_cycle()` now isolate a single operation's failure
+  instead of letting it abort the rest of the cycle -- a `generate_post()`/`generate_reply()`
+  `GenerationError` (RC-105) is caught and turned into an `outcome: "generation_failed"` result,
+  and a `publish()` (RC-102/RC-104) exception other than `SessionPaused` is caught and turned
+  into `outcome: "publish_failed"` with a sanitized (type-name-only, never raw exception text)
+  detail; either way the durable `failed`/`uncertain` publication state `publish()` already
+  writes before re-raising is unaffected, so isolating the exception in `bot.py` loses no
+  outcome state. `SessionPaused` is deliberately excluded from this isolation in both functions
+  -- a shared-session authentication challenge or account restriction still stops every
+  subsequent X action this cycle, exactly as RC-103 established, verified directly: a third,
+  otherwise-eligible reply candidate is never attempted once a second candidate's re-checked
+  auth raises `SessionPaused`. New `bot.summarize_cycle()` buckets a completed cycle's post +
+  reply results into confirmed/draft/failed/skipped/uncertain, each entry carrying a target/
+  source identifier and an outcome/detail with no possible credential or cookie field;
+  `run_cycle()` logs a one-line sanitized summary count. No new retry loop was added -- existing
+  bounded-recovery mechanisms (RC-103's crash relaunch, RC-105's generation attempts) are
+  unchanged. New `tests/manual_test_failure_isolation.py` covers a failed post generation/publish
+  not blocking independent replies, a failed reply generation/publish followed by a successful
+  candidate, a mid-cycle session-paused challenge stopping every subsequent reply, and
+  `summarize_cycle()`'s bucketing/sanitization; wired into `tests/run_offline.py`. Two
+  `tests/manual_test_publication.py` cases that asserted the pre-RC-109 propagate-the-exception
+  contract were updated to assert the new isolated-outcome contract instead -- the durable state
+  they verify (publication row status, held/unheld target, driver lifecycle) is unchanged, only
+  the observation mechanism.
 - RC-108: `persona.state.select_phase_register_and_signal()` now returns a `convergence_partner`
   signal (the other half of the rhyming pair) instead of silently dropping it, and
   `persona.prompts.build_post_prompt()` grounds a Convergence prompt in both signals -- raising

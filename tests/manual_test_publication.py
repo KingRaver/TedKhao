@@ -53,8 +53,13 @@ def test_lifecycle(path):
     # BrowserSession across every cycle rather than relaunching a driver per publish() call.
     session = BrowserSession()
     lock_a, lock_b = no_profile_lock()
+    # RC-109: an individual candidate's publish exception is now isolated (outcome=
+    # 'publish_failed') rather than raised out of run_reply_cycle -- the durable DB state and
+    # driver lifecycle this test actually verifies are unaffected, only how the failure
+    # surfaces to the caller changed.
     with lock_a, lock_b, patch.object(browser, 'get_driver', side_effect=RuntimeError('launch failed')):
-        expect_error(lambda: bot.run_reply_cycle(FakeProvider(), memory, signals, True, 1, session))
+        failed = bot.run_reply_cycle(FakeProvider(), memory, signals, True, 1, session)[0]
+    assert failed['outcome'] == 'publish_failed'
     assert not PersonaMemory(db_path=path).reply_is_held(target)
     with database._connect(path) as conn:
         assert conn.execute('SELECT status FROM publications ORDER BY id DESC').fetchone()[0] == 'failed'
@@ -111,10 +116,15 @@ def test_uncertainty(path):
     assert memory.has_replied('1111111111')
     # Exception inside submission is also ambiguous. The session already has a driver and a
     # verified auth check from above, so only post_reply needs patching here -- proving
-    # ensure_ready() does not repeat the login check on every action.
+    # ensure_ready() does not repeat the login check on every action. RC-109: this failure is
+    # now isolated (outcome='publish_failed') rather than raised out of run_reply_cycle -- what
+    # this test actually verifies is publish()'s own durable 'uncertain' state (row status,
+    # held target), not whether the exception propagates.
     with patch.object(browser, 'post_reply', side_effect=TimeoutError):
-        expect_error(lambda: bot.run_reply_cycle(
-            FakeProvider(), memory, _FAKE_TIMELINE_SIGNALS[1:2], True, 1, session))
+        uncertain = bot.run_reply_cycle(
+            FakeProvider(), memory, _FAKE_TIMELINE_SIGNALS[1:2], True, 1, session)[0]
+    assert uncertain['outcome'] == 'publish_failed'
+    assert database.get_publication(uncertain['publication_id'], path)['status'] == 'uncertain'
     assert PersonaMemory(db_path=path).reply_is_held('2222222222')
     session.close()
     print('  click-only result, submission exception, crash hold, explicit reconciliation, '
