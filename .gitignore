@@ -4,5 +4,6 @@ venv/
 .env
 data/*.db
 data/backup/
+data/browser_profile/
 logs/
 .DS_Store

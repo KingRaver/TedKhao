@@ -49,6 +49,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `manual_test_replies.py`/`manual_test_posts.py` against `deepseek-coder-v2:16b`, inspecting
   the resulting SQLite file directly.
 
+- Phase 6 (X/Twitter Integration): `src/utils/browser.py` -- Selenium WebDriver setup
+  (`get_driver()`), a persistent Chrome profile (`data/browser_profile/`, gitignored) so a
+  session survives between runs, `is_logged_in()`/`log_in()`/`ensure_logged_in()` reading
+  `config.TWITTER_USERNAME`/`TWITTER_PASSWORD`, and `post_tweet()`/`post_reply()`.
+  `src/signals/timeline_scraper.py`: `fetch() -> list[Signal]`, the same interface every
+  other `signals/*.py` module implements -- scrapes the home timeline and reuses
+  `engagement.content_analyzer.analyze_post()`'s `domain_guess` for domain classification
+  instead of duplicating keyword logic, dropping posts that guess `'general'`. New
+  `tests/manual_test_browser.py` -- deliberately calls only the read-only `is_logged_in()`,
+  never `log_in()`/`post_tweet()`/`post_reply()`, since those touch a real account. Added
+  `selenium` to `requirements.txt`. Project dependencies now install into an isolated `venv/`
+  (gitignored) instead of the global Python environment. The `chromedriver` (139.x) vs.
+  installed Chrome (152.x) mismatch that previously blocked `manual_test_browser.py` at
+  driver launch is resolved: the stale `/usr/local/bin/chromedriver` symlink (shadowing
+  Selenium Manager's own version-matched download) was renamed aside, letting Selenium
+  Manager auto-download and cache a matching driver. `get_driver()`/`is_logged_in()` are now
+  verified against live Chrome and live `x.com/home`. **Still unverified**:
+  `TWITTER_USERNAME`/`TWITTER_PASSWORD` remain unset in `.env`, so `log_in()`, the
+  authenticated timeline scrape, and posting have no live verification yet. See
+  `docs/SCAFFOLDING.md` Phase 6 for what's left to actually confirm working.
+
 ### Changed
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
   stale "no code written yet" status, added local-model testing notes (`gemma4:12b` and
@@ -63,7 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the prompt so generation naturally leaves margin.
 
 ### Planned
-- X/Twitter integration (Selenium posting + timeline scraping + reply handling) (Phase 6)
+- Orchestration (`src/bot.py` tying signals -> state -> persona -> engagement -> database ->
+  posting into one cycle) (Phase 7)
 
 ## [0.1.0] - 2026-09-11
 
