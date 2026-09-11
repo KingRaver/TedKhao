@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RC-107: `signals.base` gained `source_key()` (canonical URL, falling back to
+  `"<source>:<title>"` for a source that doesn't set one) and `content_fingerprint()`
+  (normalized title). Schema version 2 adds `publications.source_url`/`source_fingerprint`,
+  populated only for original posts by `PersonaMemory.save_draft()` and migrated via
+  `ALTER TABLE` against an existing version-1 database (legacy rows keep both NULL rather than
+  a guessed backfill, matching RC-102's own legacy-migration precedent).
+  `database.get_covered_sources()`/`PersonaMemory.covered_source_keys()` (queried fresh each
+  call, since the window is time-relative) report sources confirmed within the new
+  `config.SOURCE_COVERAGE_WINDOW_HOURS` (default 72h) or held by an unresolved
+  attempted/uncertain attempt regardless of window -- draft and failed sources are never held,
+  so a dry run or a source-row insertion alone never counts as coverage, mirroring
+  `reply_is_held()`'s held-status reasoning. `engagement.post_handler.generate_post()` filters
+  the incoming pool against this before `select_phase_register_and_signal()` runs, and returns
+  an explicit `"skipped": "all_candidate_sources_recently_covered"` result -- generating and
+  persisting nothing -- when every candidate is covered, instead of silently reselecting an
+  already-posted source; `bot.run_post_cycle()` handles the skip. A signal whose title changes
+  since it was last covered gets a new `content_fingerprint` and becomes eligible again even
+  inside the window, distinguishing a materially updated item from a repeat. New
+  `tests/manual_test_source_coverage.py` covers repeated fetches, a process restart, dry runs,
+  uncertain holds, failed non-holds, an expired window, missing-URL fallback keys, and a
+  materially updated same-URL item; wired into `tests/run_offline.py`.
+  `tests/manual_test_publication.py`'s copied-legacy-migration case was updated for the new
+  `PRAGMA user_version == 2` and to assert legacy rows have no source identity.
 - RC-106: `signals.base.Signal` gained `novelty_evidenced: bool = False`, set `True` only by
   `arxiv_feed.py`/`hackernews_feed.py` (whose fetch order is real freshness/trending evidence)
   and left `False` by `history_today.py`/`arts_feed.py`/`timeline_scraper.py` (whose order

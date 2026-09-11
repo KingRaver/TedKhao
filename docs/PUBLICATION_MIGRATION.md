@@ -1,8 +1,18 @@
-# RC-102 publication storage and migration
+# RC-102/RC-107 publication storage and migration
 
-Schema version 1 uses `PRAGMA user_version`. On the first `PersonaMemory` startup,
-`init_db()` migrates version 0 in one transaction; subsequent startups are idempotent.
-A newer schema version is rejected. This change has only been run against test fixtures.
+Schema version 2 uses `PRAGMA user_version`. On the first `PersonaMemory` startup,
+`init_db()` migrates version 0 (and, separately, version 1) to the current version in one
+transaction; subsequent startups are idempotent. A newer schema version is rejected. This
+change has only been run against test fixtures.
+
+Version 2 (RC-107) adds `publications.source_url`/`source_fingerprint`, populated only for
+original posts (`kind = 'post'`), via `ALTER TABLE` against an existing version-1 database.
+Pre-existing rows -- including the version-0-to-1 migration's own `legacy_unknown` rows --
+keep both columns NULL rather than a guessed value backfilled from a posts/signals join,
+matching the version-0-to-1 migration's own "retain as legacy/unknown, don't invent proof"
+stance; a NULL `source_url` never matches `get_covered_sources()`'s lookup, so legacy rows
+are simply excluded from source-coverage matching rather than incorrectly blocking (or
+failing to block) a real source.
 
 `publications` stores draft content, kind, target ID/author/content/URL, generation and
 attempt/confirmation/update timestamps, current outcome, and external publication ID/URL.
@@ -58,6 +68,22 @@ evidence detail once non-publication is established. These transitions release o
 uncertain/legacy holds atomically. For an interrupted attempted row, record uncertain first.
 A confirmed row cannot be automatically reset. Legacy original posts are never selected
 for automatic retry; source-coverage deduplication is separate RC-107 work.
+
+## Source coverage (RC-107)
+
+`persona.memory.PersonaMemory.covered_source_keys()` returns the `(source_url,
+content_fingerprint)` pairs `engagement.post_handler.generate_post()` must not draw an
+original post from right now: a source confirmed within `config.SOURCE_COVERAGE_WINDOW_HOURS`
+(default 72h), or a source with an unresolved `attempted`/`uncertain` attempt regardless of
+window -- an unresolved attempt must not be duplicated before reconciliation (see above)
+resolves it. `failed` and `draft` sources (including every dry run) are never held. A source
+whose title changes since it was last covered gets a new `content_fingerprint` and becomes
+eligible again even inside the window -- a materially updated item, not a repeat. When every
+signal in the current pool is covered, `generate_post()` returns an explicit skipped result
+(`"skipped": "all_candidate_sources_recently_covered"`, everything else `None`) rather than
+silently reselecting an already-posted source; `bot.run_post_cycle()` logs and returns this
+without generating, persisting a draft, or attempting to publish. See
+`tests/manual_test_source_coverage.py` for the regression cases.
 
 ## Verification
 

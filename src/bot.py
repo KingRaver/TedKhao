@@ -120,6 +120,10 @@ def run_post_cycle(provider, memory: PersonaMemory, domain_signals: list[Signal]
         raise ValueError("live_posting requires a BrowserSession -- see main()'s session setup")
 
     result = generate_post(domain_signals + timeline_signals, provider, memory)
+    if result.get("skipped"):
+        logger.info("post generation skipped: %s", result["skipped"])
+        return result
+
     logger.info("post generated: phase=%s register=%s signal=%s chars=%d",
                 result["phase"].value, result["register"].value,
                 result["signal"].source if result["signal"] else "none",

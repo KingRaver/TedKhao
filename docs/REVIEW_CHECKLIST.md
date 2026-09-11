@@ -43,7 +43,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Verified | Claude | Phase 4 evidence below; `feat/phase-4-confirm-submission` |
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Verified | Claude | Phase 5 evidence below; `feat/phase-5-validate-output` |
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Verified | Claude | Phase 6 evidence below; `feat/phase-6-source-selection` |
-| 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Planned | Unassigned | Pending |
+| 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Verified | Claude | Phase 7 evidence below; `feat/phase-7-source-coverage` |
 | 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Planned | Unassigned | Pending |
 | 9 | RC-109 | Medium | Isolate engagement failures (finding 7) | RC-104, RC-105 | Planned | Unassigned | Pending |
 | 10 | RC-110 | High | Run integrated regression and controlled live validation | RC-101–RC-109 | Planned | Unassigned | Pending |
@@ -325,18 +325,72 @@ or needed for this phase. Not deployed.
 
 Files: `src/database.py`, `src/persona/memory.py`, state selection and post handler.
 
-- [ ] Persist stable source identity (source ID or canonical URL, with a documented fallback
+- [x] Persist stable source identity (source ID or canonical URL, with a documented fallback
       for missing URLs) and define a configurable recent-coverage window.
-- [ ] Filter recently confirmed coverage before choosing a signal; source-row insertion alone
+- [x] Filter recently confirmed coverage before choosing a signal; source-row insertion alone
       and dry runs must not count as published coverage.
-- [ ] Hold signals associated with uncertain submissions until RC-104 reconciliation resolves
+- [x] Hold signals associated with uncertain submissions until RC-104 reconciliation resolves
       them, preventing accidental duplicate publication.
-- [ ] If all candidates were covered, return an explicit no-post result rather than silently
+- [x] If all candidates were covered, return an explicit no-post result rather than silently
       reusing the same source. Define how materially updated source items become eligible.
-- [ ] Test repeated fetches, process restarts, dry runs, uncertainty, expired coverage windows,
+- [x] Test repeated fetches, process restarts, dry runs, uncertainty, expired coverage windows,
       missing URLs, and two sources referring to the same canonical URL.
 
 Evidence required: deduplication and re-eligibility regressions.
+
+RC-107 verification (2026-09-11, working tree based on `d8bafaf`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_source_coverage.py`
+checks alongside every existing offline check. `signals/base.py` gained `source_key()`
+(canonical URL, falling back to `"<source>:<title>"` for a source that doesn't set one) and
+`content_fingerprint()` (normalized title) -- two separate identities rather than one, so a
+source's origin and its content-at-fetch-time can be reasoned about independently.
+`publications` gained schema version 2's `source_url`/`source_fingerprint` columns (added via
+`ALTER TABLE` against an existing version-1 database, or created inline for a fresh one;
+`init_db()`'s version gate now allows 0/1/2 and migrates either starting point in one
+transaction), populated only for original posts by `persona.memory.PersonaMemory.save_draft()`
+computing both from the signal and passing them through to `database.save_draft()`, which
+stores whatever it's given without importing `signals.base` (matching `insert_signal()`'s
+existing "typed loosely" convention). `database.get_covered_sources(window_start)` returns the
+`(source_url, source_fingerprint)` pairs currently ineligible: confirmed within
+`config.SOURCE_COVERAGE_WINDOW_HOURS` (configurable, default 72h) or held by an unresolved
+`attempted`/`uncertain` attempt regardless of window -- `failed` and `draft` (including every
+dry run) are never held, mirroring `reply_is_held()`'s held-status set for the same
+reconciliation reason. `PersonaMemory.covered_source_keys()` queries this fresh against the
+database on every call rather than caching it alongside `recent_registers`/`recent_phases`,
+since the window is time-relative and must keep moving forward across a resident loop's cycles
+even with no new writes. `engagement.post_handler.generate_post()` filters the incoming signal
+pool against this set before calling `select_phase_register_and_signal()`; when the pool was
+nonempty but every candidate was filtered out, it returns an explicit skipped result
+(`"skipped": "all_candidate_sources_recently_covered"`, everything else `None`) without
+generating, persisting a draft, or consuming an LLM call -- distinct from `Phase.QUIET`'s
+existing empty-pool result, which still applies when the original pool was empty to begin
+with. `bot.run_post_cycle()` checks for this key and logs/returns without attempting to
+publish. Materially updated items become eligible again inside the window because
+`content_fingerprint()` differs from what was covered: a same-URL signal whose title changed
+since it was last covered is treated as a new item, not a repeat -- verified directly, along
+with a same-URL/same-title repeat staying covered, a confirmed source's coverage surviving a
+fresh `PersonaMemory` (process restart), a draft-only/dry-run attempt never counting as
+coverage, an unresolved uncertain attempt holding its source, a failed attempt remaining
+eligible for retry, a confirmation older than the window expiring back to eligible, two
+URL-less signals with the same source+title sharing a stable fallback key while two with
+different titles don't collide, and an all-candidates-covered pool producing the exact skipped
+result with zero new `posts`/`publications` rows. Legacy (pre-version-2) publication rows keep
+`source_url`/`source_fingerprint` NULL rather than a guessed backfill from a posts/signals
+join, matching RC-102's own "retain as legacy/unknown, don't invent proof" precedent for its
+version-0-to-1 migration; `tests/manual_test_publication.py`'s copied-legacy-migration case was
+updated for the new `PRAGMA user_version == 2` and to assert legacy rows have no source_url.
+`bot.run_post_cycle()`'s skip wiring was also exercised directly (generate, confirm, regenerate
+against the same signal, dry run, no network/browser) outside the offline harness as an
+additional smoke check; not part of the committed regression suite since `generate_post()`'s
+own tests already cover the underlying logic and this only re-verified the orchestration path.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured. No real Anthropic/local-model API or
+browser was used. The coverage-window default (72h) is a placeholder, not a tuned value, same
+status as `docs/SPEC.md`'s open novelty-scoring question; `persona.state`'s selection logic
+itself (`src/persona/state.py`) was not modified -- filtering happens one layer up in
+`post_handler.generate_post()` before an already-narrowed pool reaches it, keeping publication-
+status concerns out of the domain-generic phase/register mechanism per CLAUDE.md's persona/
+layering convention. Not deployed.
 
 ## Phase 8: RC-108 — Evidence-backed prompt options
 
@@ -422,6 +476,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 | 2026-09-11 | RC-103 | `feat/phase-3-persistent-browser` | `venv/bin/python tests/run_offline.py`; `venv/bin/python tests/manual_test_browser.py` (live Chrome, no credentials) | Offline fake-driver session/crash/shutdown checks and RC-102 lifecycle regressions passed; live headless Chrome confirmed SessionPaused on no login and profile-lock exclusion | Not deployed |
 | 2026-09-11 | RC-105 | `feat/phase-5-validate-output` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_generation_validation.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Malformed/missing/null provider responses raise `GenerationError` (both providers); empty/malformed initial or shorten output is retried within bounded attempts and never persists a draft or holds a reply target; existing overlength truncation path still enforces the hard limit | Not deployed |
 | 2026-09-11 | RC-106 | `feat/phase-6-source-selection` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_state_selection.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `Signal.novelty_evidenced`, set by fetchers whose rank is real freshness/trending evidence (arxiv, hackernews) and withheld where it isn't (wikipedia_otd, met_museum, x_timeline); tie-breaking now uses a seeded random choice over tied signals instead of list order; Breakthrough requires `novelty_evidenced`; Convergence requires two different-domain high-novelty signals to share significant vocabulary. History-only and arts-only top-rank-1.0 pools no longer resolve to Breakthrough; unrelated cross-domain high-novelty signals no longer resolve to Convergence; both baseline-evidence regressions fixed | Not deployed |
+| 2026-09-11 | RC-107 | `feat/phase-7-source-coverage` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_source_coverage.py`, updated `tests/manual_test_publication.py` migration assertions); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Added `signals.base.source_key()`/`content_fingerprint()`; schema version 2 adds `publications.source_url`/`source_fingerprint`, populated only for original posts; `database.get_covered_sources()` + `PersonaMemory.covered_source_keys()` (queried fresh per call, confirmed-within-`SOURCE_COVERAGE_WINDOW_HOURS` or held attempted/uncertain regardless of window, draft/failed never held); `generate_post()` filters the pool before selection and returns an explicit `"skipped": "all_candidate_sources_recently_covered"` result when every candidate is covered, without persisting anything; `bot.run_post_cycle()` handles the skip. Same-URL title changes (materially updated) become eligible again inside the window; legacy rows keep NULL source identity (not backfilled), matching RC-102 precedent | Not deployed |
 
 ## Decisions and change history
 

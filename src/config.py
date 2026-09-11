@@ -43,6 +43,12 @@ POST_GENERATION_ATTEMPTS = 2
 CYCLE_INTERVAL_MINUTES = int(os.getenv("CYCLE_INTERVAL_MINUTES", "240"))
 REPLY_MAX_PER_CYCLE = int(os.getenv("REPLY_MAX_PER_CYCLE", "3"))
 
+# RC-107: how long a confirmed original post keeps its source ineligible for re-selection.
+# Placeholder default, not a tuned value -- docs/SPEC.md's open novelty-scoring question
+# applies here too; 72h covers 18 resident cycles at the default 240-minute interval, long
+# enough that a source fetched again the same or next day doesn't get posted about twice.
+SOURCE_COVERAGE_WINDOW_HOURS = int(os.getenv("SOURCE_COVERAGE_WINDOW_HOURS", "72"))
+
 # Actual posting to X is public and effectively irreversible (see docs/SCAFFOLDING.md Phase 6),
 # so it defaults off -- bot.py only generates and persists unless explicitly told to go live via
 # --live, and even then bot.py refuses if TWITTER_USERNAME/TWITTER_PASSWORD aren't configured.

@@ -91,7 +91,7 @@ def _connect(db_path: Optional[str] = None):
 def init_db(db_path: Optional[str] = None) -> None:
     with _connect(db_path) as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version > 1:
+        if version > 2:
             raise RuntimeError("Database schema is newer than this application")
         conn.execute("BEGIN IMMEDIATE")
         for statement in _SCHEMA.split(";"):
@@ -108,7 +108,25 @@ def init_db(db_path: Optional[str] = None) -> None:
                          "target_author, target_content, status, created_at) "
                          "SELECT 'reply', reply_content, register, post_id, post_author, "
                          "post_content, 'legacy_unknown', replied_at FROM replied_posts")
-            conn.execute("PRAGMA user_version = 1")
+            version = 1
+        if version == 1:
+            # RC-107: add source_url/source_fingerprint to a publications table that may
+            # already exist from schema version 1 (CREATE TABLE IF NOT EXISTS above is a
+            # no-op there) -- ALTER TABLE only when the column isn't already present, so this
+            # stays idempotent whether starting from version 0 or 1. Existing legacy_unknown
+            # rows are left with NULL source_url/source_fingerprint rather than guessed at via
+            # a posts/signals join: same "retain as legacy/unknown, don't invent proof" stance
+            # RC-102's migration took, so they're simply excluded from coverage matching below
+            # rather than incorrectly blocking (or failing to block) a real source.
+            existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(publications)")}
+            if "source_url" not in existing_columns:
+                conn.execute("ALTER TABLE publications ADD COLUMN source_url TEXT")
+            if "source_fingerprint" not in existing_columns:
+                conn.execute("ALTER TABLE publications ADD COLUMN source_fingerprint TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS publication_source "
+                         "ON publications(source_url, status)")
+            version = 2
+        conn.execute(f"PRAGMA user_version = {version}")
 
 
 def insert_signal(signal, db_path: Optional[str] = None) -> int:
@@ -211,6 +229,8 @@ CREATE TABLE IF NOT EXISTS publications (
     target_author TEXT,
     target_content TEXT,
     target_url TEXT,
+    source_url TEXT,
+    source_fingerprint TEXT,
     status TEXT NOT NULL CHECK (status IN
         ('draft', 'attempted', 'confirmed', 'failed', 'uncertain', 'legacy_unknown')),
     created_at TEXT,
@@ -234,8 +254,14 @@ CREATE INDEX IF NOT EXISTS publication_target ON publications(target_id, status)
 """
 
 
-def save_draft(content, register, phase=None, signal=None, target=None, db_path=None):
-    """Persist generation and its persona/source history in one transaction."""
+def save_draft(content, register, phase=None, signal=None, target=None, db_path=None,
+               source_key=None, source_fingerprint=None):
+    """Persist generation and its persona/source history in one transaction.
+
+    source_key/source_fingerprint (RC-107) are only meaningful for an original post (target
+    is None) and only set when the caller supplies them -- callers.py (persona.memory) is the
+    one that knows how to derive them from a Signal, so this layer just stores whatever it's
+    given, matching insert_signal()'s "typed loosely" convention above."""
     if target is not None and not target.get("id"):
         raise ValueError("Reply drafts require a target identity")
     now = datetime.now(timezone.utc).isoformat()
@@ -257,11 +283,12 @@ def save_draft(content, register, phase=None, signal=None, target=None, db_path=
         target = target or {}
         publication_id = conn.execute(
             "INSERT INTO publications (kind, content, register, phase, post_row_id, target_id, "
-            "target_author, target_content, target_url, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)",
+            "target_author, target_content, target_url, source_url, source_fingerprint, "
+            "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)",
             ('post' if post_id else 'reply', content, register, phase, post_id,
              target.get('id'), target.get('author_handle'), target.get('text'),
-             target.get('url'), now, now)).lastrowid
+             target.get('url'), post_id and source_key, post_id and source_fingerprint,
+             now, now)).lastrowid
         conn.execute("INSERT INTO publication_events (publication_id, status, timestamp) "
                      "VALUES (?, 'draft', ?)", (publication_id, now))
     return publication_id, post_id
@@ -273,6 +300,23 @@ def get_publication(publication_id, db_path=None):
     if row is None:
         raise ValueError("Unknown publication")
     return dict(row)
+
+
+def get_covered_sources(window_start: str, db_path: Optional[str] = None) -> set[tuple[str, str]]:
+    """(source_url, source_fingerprint) pairs currently ineligible for original-post
+    re-selection (RC-107): confirmed within the coverage window, or held by an unresolved
+    attempt regardless of window -- mirrors reply_is_held's held-status set so an uncertain
+    publication can't be duplicated before RC-104 reconciliation resolves it. A draft (dry
+    run or otherwise) never appears here; only a real publication attempt does. Legacy rows
+    have no source_url (see init_db's version-1-to-2 migration) and are excluded, same as
+    reply_is_held treats a legacy target as held only once it actually has a target_id."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT source_url, source_fingerprint FROM publications WHERE kind = 'post' "
+            "AND source_url IS NOT NULL AND (status IN ('attempted', 'uncertain') OR "
+            "(status = 'confirmed' AND confirmed_at >= ?))", (window_start,)
+        ).fetchall()
+    return {(row["source_url"], row["source_fingerprint"]) for row in rows}
 
 
 def reply_is_held(target_id, db_path=None):

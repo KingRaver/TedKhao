@@ -5,10 +5,13 @@ Drafts do not consume targets. Publication holds are read from the database so
 attempted, uncertain, and legacy rows survive restarts without implying success.
 All production writes commit before updating the in-memory history or success set.
 """
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import database
+import config
 from persona.state import Phase, Register
+from signals.base import content_fingerprint, source_key
 
 
 class PersonaMemory:
@@ -65,8 +68,12 @@ class PersonaMemory:
             self.record_phase(phase)
 
     def save_draft(self, content, register, phase=None, signal=None, target=None):
+        key = fingerprint = None
+        if signal is not None and target is None:
+            key, fingerprint = source_key(signal), content_fingerprint(signal)
         ids = database.save_draft(content, register.value, phase.value if phase else None,
-                                  signal, target, self._db_path)
+                                  signal, target, self._db_path,
+                                  source_key=key, source_fingerprint=fingerprint)
         self.record_register(register)
         if phase is not None:
             self.record_phase(phase)
@@ -74,6 +81,17 @@ class PersonaMemory:
 
     def reply_is_held(self, post_id):
         return database.reply_is_held(post_id, self._db_path)
+
+    def covered_source_keys(self) -> set[tuple[str, str]]:
+        """(source_url, content_fingerprint) pairs an original post must not be generated
+        from right now (RC-107) -- see database.get_covered_sources for exactly what counts.
+        Queried fresh against the database each call, not cached alongside recent_registers/
+        recent_phases above, since the coverage window is time-relative: "confirmed within the
+        last N hours" keeps moving forward across a resident loop's cycles even with no new
+        writes, which an in-memory snapshot taken once at construction wouldn't reflect."""
+        window_start = (datetime.now(timezone.utc) -
+                         timedelta(hours=config.SOURCE_COVERAGE_WINDOW_HOURS)).isoformat()
+        return database.get_covered_sources(window_start, self._db_path)
 
     def transition_publication(self, publication_id, status, **kwargs):
         database.transition_publication(publication_id, status, db_path=self._db_path, **kwargs)

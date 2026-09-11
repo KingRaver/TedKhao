@@ -190,9 +190,11 @@ def test_migration(root):
     database.init_db(copied)
     database.init_db(copied)
     with sqlite3.connect(copied) as conn:
-        assert conn.execute('PRAGMA user_version').fetchone()[0] == 1
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == 2
         assert conn.execute('SELECT COUNT(*) FROM publications').fetchone()[0] == 2
         assert conn.execute("SELECT COUNT(*) FROM publications WHERE status='legacy_unknown'").fetchone()[0] == 2
+        # RC-107: legacy rows get no guessed source identity (see docs/PUBLICATION_MIGRATION.md).
+        assert conn.execute("SELECT COUNT(*) FROM publications WHERE source_url IS NOT NULL").fetchone()[0] == 0
         assert conn.execute('SELECT post_text FROM posts').fetchone()[0] == 'old'
         assert conn.execute('SELECT reply_content FROM replied_posts').fetchone()[0] == 'old reply'
     memory = PersonaMemory(db_path=copied)
