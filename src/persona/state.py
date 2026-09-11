@@ -5,6 +5,7 @@ of each Register and Phase -- this module is the mechanism, those docs are the m
 Keep the enum members in sync with both documents if the taxonomy ever changes.
 """
 import random
+import re
 from enum import Enum
 from typing import Optional
 
@@ -98,11 +99,59 @@ _CONVERGENCE_NOVELTY_THRESHOLD = 0.7
 _BREAKTHROUGH_NOVELTY_THRESHOLD = 0.85
 _EXCAVATION_NOVELTY_THRESHOLD = 0.3
 
+# Words too generic to count as evidence two signals are about the same thing (RC-106's
+# Convergence "rhyme" check below) -- short/common words would produce false-positive matches
+# between genuinely unrelated signals.
+_RHYME_STOPWORDS = {
+    "about", "after", "their", "there", "these", "those", "which", "while", "would",
+    "could", "should", "still", "years", "world", "first", "today", "shows", "study",
+}
+_RHYME_MIN_WORD_LENGTH = 5
+
 
 def _pick_register_for_phase(phase: Phase, recent_registers: list[Register]) -> Register:
     available = [r for r in _ALL_REGISTERS if r not in recent_registers[-3:]] or _ALL_REGISTERS
     candidates = [r for r in _PHASE_REGISTER_AFFINITY.get(phase, _ALL_REGISTERS) if r in available]
     return random.choice(candidates or available)
+
+
+def _select_top_signal(signals: list[Signal]) -> Signal:
+    """Pick the highest-novelty signal, breaking ties with an explicit random choice among the
+    tied signals instead of relying on list order. Without this, `max()` deterministically
+    returns whichever tied signal appears first in the pool -- and since bot.py's
+    _DOMAIN_SIGNAL_SOURCES always fetches arxiv first, arxiv would systematically win every tie
+    regardless of merit (RC-106)."""
+    top_score = max(s.novelty_score for s in signals)
+    tied = [s for s in signals if s.novelty_score == top_score]
+    return random.choice(tied)
+
+
+def _significant_words(signal: Signal) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", f"{signal.title} {signal.summary}".lower())
+    return {w for w in words if len(w) >= _RHYME_MIN_WORD_LENGTH and w not in _RHYME_STOPWORDS}
+
+
+def _signals_rhyme(a: Signal, b: Signal) -> bool:
+    """Lightweight, honest evidence that two different-domain signals are actually about the
+    same thing -- shared significant vocabulary in their title/summary -- rather than inferring
+    a relationship from domain count alone. Not semantic understanding; a real
+    relationship-detection model is future work per docs/SPEC.md's novelty-scoring open
+    question. Deliberately no fallback proxy when this comes back empty, same reasoning as
+    Contested staying unreachable below."""
+    return bool(_significant_words(a) & _significant_words(b))
+
+
+def _find_convergent_pair(high_novelty: list[Signal]) -> Optional[tuple[Signal, Signal]]:
+    """Find two different-domain high-novelty signals that rhyme (see _signals_rhyme). The pool
+    is shuffled before the search so which pair is found -- when more than one rhyming pair
+    exists -- doesn't inherit the same fetch-order bias _select_top_signal guards against."""
+    pool = list(high_novelty)
+    random.shuffle(pool)
+    for i, a in enumerate(pool):
+        for b in pool[i + 1:]:
+            if a.domain != b.domain and _signals_rhyme(a, b):
+                return (a, b)
+    return None
 
 
 def select_phase_register_and_signal(
@@ -113,13 +162,26 @@ def select_phase_register_and_signal(
     """Score the day's fetched signal pool into a Phase + Register + which Signal to post
     about -- the original-post equivalent of select_register_for_reply() above.
 
-    This is a first-pass heuristic over structural properties of the pool (how many domains
-    have high-novelty signals, the top signal's novelty_score, its source) rather than
+    This is a first-pass heuristic over structural properties of the pool rather than deep
     semantic content -- detecting real Contested-phase material (a live disagreement) would
     need actual topic/sentiment analysis across signals, which this pool doesn't carry yet,
     so Contested is left unreachable here for now rather than faked from a proxy. The exact
     scoring formula is an open question in docs/SPEC.md and will need tuning once real
     signal data is flowing.
+
+    Two structural fixes (RC-106) shape the heuristic below:
+    - Ties on novelty_score are broken with an explicit random choice (_select_top_signal),
+      not list order -- otherwise arxiv, always fetched first into the pool, would
+      systematically win every tie.
+    - Breakthrough requires novelty_evidenced=True (see signals/base.py's Signal.novelty_evidenced):
+      a signal's rank_novelty() score alone is not evidence of genuine novelty for sources whose
+      fetch order isn't a significance ranking (wikipedia_otd's "on this day" order, arts_feed's
+      random sample) -- otherwise a first-ranked historical event or museum object becomes a
+      "breakthrough" solely because rank 0 always scores 1.0.
+    - Convergence requires two different-domain high-novelty signals to actually rhyme
+      (_signals_rhyme -- shared significant vocabulary), not just that >=2 domains independently
+      cleared the novelty bar; unrelated high-novelty signals fall through to whichever
+      supported single-signal phase applies instead.
 
     Args:
         signals: the day's fetched signals, pooled across all signals/*.py sources.
@@ -135,21 +197,25 @@ def select_phase_register_and_signal(
     if not signals:
         return Phase.QUIET, _pick_register_for_phase(Phase.QUIET, recent_registers), None
 
-    top_signal = max(signals, key=lambda s: s.novelty_score)
-    high_novelty_domains = {
-        s.domain for s in signals if s.novelty_score >= _CONVERGENCE_NOVELTY_THRESHOLD
-    }
+    top_signal = _select_top_signal(signals)
+    high_novelty = [s for s in signals if s.novelty_score >= _CONVERGENCE_NOVELTY_THRESHOLD]
+    convergent_pair = _find_convergent_pair(high_novelty)
 
-    if len(high_novelty_domains) >= 2:
+    if convergent_pair:
         phase = Phase.CONVERGENCE
-    elif top_signal.novelty_score >= _BREAKTHROUGH_NOVELTY_THRESHOLD:
+        signal = _select_top_signal(list(convergent_pair))
+    elif top_signal.novelty_evidenced and top_signal.novelty_score >= _BREAKTHROUGH_NOVELTY_THRESHOLD:
         phase = Phase.BREAKTHROUGH
+        signal = top_signal
     elif top_signal.source == "wikipedia_otd":
         phase = Phase.ANNIVERSARY
+        signal = top_signal
     elif top_signal.novelty_score <= _EXCAVATION_NOVELTY_THRESHOLD:
         phase = Phase.EXCAVATION
+        signal = top_signal
     else:
         phase = Phase.QUIET
+        signal = top_signal
 
     register = _pick_register_for_phase(phase, recent_registers)
-    return phase, register, top_signal
+    return phase, register, signal

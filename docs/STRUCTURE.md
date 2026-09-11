@@ -70,6 +70,8 @@ tedkhao/
     ├── manual_test_browser_confirmation.py # RC-104 fake-driver submission confirmation checks
     ├── manual_test_persistence.py  # Phase 5 schema/PersonaMemory persistence checks
     ├── manual_test_bot_cycle.py    # Phase 7 orchestrator cycle checks (fake provider, temp db)
+    ├── manual_test_generation_validation.py # RC-105 provider/handler nonempty-output checks
+    ├── manual_test_state_selection.py # RC-106 tie-break/evidenced-Breakthrough/Convergence checks
     ├── manual_test_posts.py        # Model-backed original-post voice review harness
     ├── manual_test_replies.py      # Model-backed reply voice review harness
     ├── manual_test_browser.py      # Live-Chrome smoke test (no real account actions)

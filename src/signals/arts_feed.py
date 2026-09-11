@@ -43,5 +43,6 @@ def fetch(max_results: int = 10) -> list[Signal]:
             summary=", ".join(part for part in (artist, date) if part),
             url=obj.get("objectURL", ""),
             novelty_score=rank_novelty(i, len(sample_ids)),
+            novelty_evidenced=False,  # sample order is random.sample(), not a significance rank
         ))
     return signals

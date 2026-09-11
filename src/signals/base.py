@@ -18,6 +18,14 @@ class Signal:
     summary: str = ""
     url: str = ""
     novelty_score: float = 0.0
+    # True only when this source's fetch order is itself evidence of freshness or trending
+    # significance (arxiv: sorted by submission date; hackernews: current top-stories rank).
+    # False for sources whose order is arbitrary or unrelated to novelty (wikipedia_otd's "on
+    # this day" order, arts_feed's random sample, a user's timeline scroll order) -- rank 0
+    # there means "happened to be first," not "genuinely new." persona.state gates Breakthrough
+    # on this so a first-ranked historical event or museum object can't become a breakthrough
+    # solely because rank_novelty() gave it a 1.0 (RC-106).
+    novelty_evidenced: bool = False
     fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

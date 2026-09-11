@@ -65,5 +65,6 @@ def fetch(session: BrowserSession, max_results: int = 10) -> list[Signal]:
             summary=text,
             url=url,
             novelty_score=rank_novelty(i, len(raw)),
+            novelty_evidenced=False,  # scroll position in a timeline isn't a novelty ranking
         ))
     return signals
