@@ -177,11 +177,83 @@ X's current web app DOM, not a public API contract — they can silently break i
 DOM. `docs/SPEC.md`'s Non-Goals already accepts this risk in exchange for avoiding paid X API
 access.
 
-## Phase 7 — Orchestration ⬜ not started
+## Phase 7 — Orchestration ✅ done, ⚠️ reply-path live posting still blocked on credentials (same as Phase 6)
 
-- [ ] `src/bot.py` — thin orchestrator per `docs/STRUCTURE.md`'s design; ties signals →
-      state engine → persona → engagement → database → posting into one cycle
-- [ ] Scheduling/cadence (timer loop, or launchd job per the deployment target)
+- [x] `src/bot.py` — thin orchestrator per `docs/STRUCTURE.md`'s design; ties signals →
+      state engine → persona → engagement → database → posting into one cycle.
+      `fetch_all_signals()` pulls the four domain sources plus one timeline fetch (shared
+      between the post cycle's signal pool and the reply cycle's candidate discovery, so a
+      cycle never launches Selenium twice); `run_post_cycle()` and `run_reply_cycle()` call
+      the new `engagement/post_handler.generate_post()` /
+      `engagement/reply_handler.generate_reply()` respectively, then optionally publish via
+      `utils/browser.py`. Added `engagement/post_handler.py` (`generate_post()`) as the
+      original-post equivalent of `reply_handler.generate_reply()` — this is the module
+      `tests/manual_test_posts.py`'s docstring (Phase 4) and `docs/SCAFFOLDING.md`'s Phase
+      4/5/6 notes already pointed at as deferred here, so `bot.py` itself stays thin instead
+      of absorbing that logic inline. Reply-target discovery reads the author handle + post
+      id back out of `timeline_scraper.py`'s `x.com/<handle>/status/<id>` permalinks
+      (`bot._parse_x_post_url()`) rather than widening `signals.base.Signal` with an
+      X-specific author field for one caller; malformed/non-status URLs are skipped.
+      Already-replied signals are skipped via `PersonaMemory.has_replied()`.
+      **Bug found and fixed during this phase**: `engagement/post_handler.py`'s direct
+      `database.insert_signal()`/`insert_post()` calls weren't threading the owning
+      `PersonaMemory`'s `db_path` through, so a `PersonaMemory(db_path=...)` instance's posts
+      would silently land in `config.DATABASE_PATH`'s default database instead of the one
+      `memory` was actually constructed against — same class of bug
+      `reply_handler.generate_reply()` never had, since it only ever touches the database
+      through `memory`'s own methods. Fixed by adding a `PersonaMemory.db_path` property and
+      threading it through `post_handler.generate_post()`'s direct calls; covered by
+      `tests/manual_test_bot_cycle.py`'s `test_run_post_cycle`, which asserts against a temp
+      db rather than the real one.
+- [x] Scheduling/cadence (timer loop, or launchd job per the deployment target) — `bot.py`
+      supports both shapes the checklist item names: `--once` runs a single cycle and exits
+      (the shape an external launchd job would invoke on a schedule), and the default with no
+      flag runs an internal `time.sleep`-based timer loop. New `config.CYCLE_INTERVAL_MINUTES`
+      (default 240 = 4h, landing on 6 cycles/day at the upper end of `docs/SPEC.md`'s "3-6
+      original posts a day" user story) and `config.REPLY_MAX_PER_CYCLE` (default 3) control
+      cadence/volume; both are env-overridable and also exposed as `--interval-minutes`/
+      `--max-replies` CLI flags for a single run. Live publishing defaults off
+      (`config.LIVE_POSTING_ENABLED=false`) since posting is public and effectively
+      irreversible (`docs/SCAFFOLDING.md` Phase 6) — `--live` (or the env var) is required to
+      publish, and `bot.py` refuses to go live and falls back to dry-run with a logged warning
+      if `TWITTER_USERNAME`/`TWITTER_PASSWORD` aren't set, rather than failing partway through
+      a cycle.
+
+Verified two ways, same standard as Phase 4/5/6:
+- `tests/manual_test_bot_cycle.py` (new, plain asserts, no pytest suite yet — Phase 9)
+  exercises `_parse_x_post_url()`, `run_post_cycle()`, and `run_reply_cycle()` against a fake,
+  non-network `LLMProvider` and a temp database: post generation + persistence, reply
+  generation for well-formed timeline permalinks, malformed-permalink skipping, `max_replies`
+  capping, and already-replied dedup across two passes over the same candidates. All pass
+  (`venv/bin/python tests/manual_test_bot_cycle.py`). Re-ran `tests/manual_test_persistence.py`
+  as a regression check after the `PersonaMemory.db_path` fix above — still passes.
+- A live `venv/bin/python src/bot.py --once` run (`.env`'s `LLM_PROVIDER=local`, same
+  `deepseek-coder-v2:16b` setup as Phase 4/5) against the real `arxiv`/`history_today`/
+  `hackernews`/`arts_feed` sources: all four fetched successfully, phase/register selection
+  ran (`convergence`/`delighted`), the generated post and its triggering signal were written
+  to `data/tedkhao.db` (`posts`, `signals` with `used_at` set, `state_history`) exactly as
+  Phase 5 verified for `tests/manual_test_posts.py`, and no browser call was made (dry run).
+  `--live` was also exercised once to confirm the credential guard: it logged a warning and
+  fell back to dry-run rather than attempting a live post, since `.env`'s
+  `TWITTER_USERNAME`/`TWITTER_PASSWORD` are still empty.
+  `timeline_scraper.fetch()` failed inside `fetch_all_signals()`'s try/except exactly as
+  expected — the same "needs real credentials" blocker Phase 6 already documented, not a new
+  issue — and the cycle correctly continued using the other three sources rather than
+  aborting. Reply-cycle live posting and the reply-candidate-discovery path against a real
+  timeline remain genuinely unverified end-to-end for the same reason: no `TWITTER_USERNAME`/
+  `TWITTER_PASSWORD` in this repo's `.env` yet. **This is the one item this phase leaves
+  unverified** — everything else (orchestration wiring, dry-run generation/persistence for
+  both posts and replies, cadence/CLI, the live-posting safety guard) is done and proven.
+
+**Voice-quality note, not new**: the live run's generated post text mixed the triggering
+arxiv signal (a GPU-accelerated counterfactual-regret-minimization paper) with an unrelated
+"medieval color notation systems" comparison that has no basis in the signal — another
+instance of the cross-cutting voice-quality open item tracked since Phase 2/4 (generic/
+confused phrasing, occasional fabricated detail), now also observed via the orchestrator path
+on the same code-specialized local model already flagged as non-representative of
+general-purpose voice quality. Doesn't block this phase (the orchestration mechanism is what
+Phase 7 is responsible for) and isn't being treated as a new verdict on voice quality, per the
+standing "don't overgeneralize from one test" rule.
 
 ## Phase 8 — Local-Model Deployment ⚠️ partially validated
 

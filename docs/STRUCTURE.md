@@ -44,7 +44,8 @@ tedkhao/
 │   ├── engagement/                # Perception + reply targeting (replaces content_analyzer.py)
 │   │   ├── __init__.py
 │   │   ├── content_analyzer.py    # Classifies incoming posts: topic, sentiment, question/opinion
-│   │   └── reply_handler.py       # Scores reply opportunities, generates replies via prompt engine
+│   │   ├── reply_handler.py       # Scores reply opportunities, generates replies via prompt engine
+│   │   └── post_handler.py        # Original-post equivalent of reply_handler.py (Phase 7)
 │   │
 │   └── utils/
 │       ├── __init__.py

@@ -70,6 +70,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authenticated timeline scrape, and posting have no live verification yet. See
   `docs/SCAFFOLDING.md` Phase 6 for what's left to actually confirm working.
 
+- Phase 7 (Orchestration): `src/bot.py` -- thin orchestrator tying signals -> state engine ->
+  persona -> engagement -> database -> posting into one cycle, plus a CLI (`--once`, `--live`,
+  `--interval-minutes`, `--max-replies`). `fetch_all_signals()` fetches the four domain
+  sources and one timeline fetch shared between post-generation and reply-target discovery.
+  `run_reply_cycle()` extracts author handle + post id from `timeline_scraper.py`'s
+  `x.com/<handle>/status/<id>` permalinks (`_parse_x_post_url()`) and skips already-replied
+  candidates via `PersonaMemory.has_replied()`. New `src/engagement/post_handler.py`
+  (`generate_post()`) -- the original-post equivalent of `reply_handler.generate_reply()`,
+  the module `tests/manual_test_posts.py` and prior phases' notes already pointed at as
+  deferred here. New `config.CYCLE_INTERVAL_MINUTES` (default 240, ~6 cycles/day) and
+  `REPLY_MAX_PER_CYCLE` (default 3). New `config.LIVE_POSTING_ENABLED` (default `false`) --
+  live publishing requires an explicit opt-in and is refused (falls back to dry-run with a
+  logged warning) if `TWITTER_USERNAME`/`TWITTER_PASSWORD` aren't set. New
+  `tests/manual_test_bot_cycle.py`: plain-assert harness against a fake, no-network
+  `LLMProvider` and a temp database, covering URL parsing, post/reply generation +
+  persistence, `max_replies` capping, and already-replied dedup. Verified both by that
+  harness and by a live `bot.py --once` run against `deepseek-coder-v2:16b` and the real
+  `arxiv`/`history_today`/`hackernews`/`arts_feed` sources, inspecting the resulting SQLite
+  rows directly. **Still unverified**: the reply cycle's live-posting path and
+  reply-candidate discovery against a real timeline, for the same reason as Phase 6 --
+  `TWITTER_USERNAME`/`TWITTER_PASSWORD` remain unset in `.env`.
+
 ### Changed
 - Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
   stale "no code written yet" status, added local-model testing notes (`gemma4:12b` and
@@ -82,10 +104,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs over (`_ensure_length()` in `reply_handler.py`), with truncation kept only as a
   last-resort safety net. Hard limit lowered to 275 chars with a 220-char soft target in
   the prompt so generation naturally leaves margin.
-
-### Planned
-- Orchestration (`src/bot.py` tying signals -> state -> persona -> engagement -> database ->
-  posting into one cycle) (Phase 7)
+- `PersonaMemory`'s `db_path` wasn't threaded through to the direct `database.insert_signal()`/
+  `insert_post()` calls in the new `engagement/post_handler.py` (Phase 7) -- a
+  `PersonaMemory(db_path=...)` instance's generated posts/signals would have silently landed
+  in `config.DATABASE_PATH`'s default database instead of the one `memory` was actually
+  constructed against. Fixed by adding a `PersonaMemory.db_path` property and threading it
+  through; caught by `tests/manual_test_bot_cycle.py` before this ever ran against the real
+  database.
 
 ## [0.1.0] - 2026-09-11
 
