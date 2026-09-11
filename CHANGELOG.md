@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/SCAFFOLDING.md`: phased build checklist, verified against actual repo state rather
+  than the plan in `docs/SPEC.md` -- Persona Engine and Reply Pipeline phases done, Signal
+  Ingestion / Original Post Generation / Persistence / X integration / Orchestration phases
+  not yet started.
+
 ### Fixed
 - Reply length overflow: replies exceeding the character limit were being chopped
   mid-sentence by string truncation. Now the model rewrites its own reply to fit when it
