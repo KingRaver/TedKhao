@@ -132,13 +132,50 @@ loaded the prior run's `recent_registers`/`replied_post_ids` correctly. A separa
 9) exercises the same claims deterministically against a fake, no-network `LLMProvider` and a
 temp database, so this wiring can be re-checked without a live model.
 
-## Phase 6 — X/Twitter Integration ⬜ not started
+## Phase 6 — X/Twitter Integration ⚠️ partially verified, blocked on credentials
 
-- [ ] `src/utils/browser.py` — Selenium WebDriver setup
-- [ ] `src/signals/timeline_scraper.py` — X timeline scraping (conversation-driven signal)
-- [ ] Login/session handling (`TWITTER_USERNAME`/`TWITTER_PASSWORD` already in `.env.example`,
-      unused so far)
-- [ ] Actual posting (original posts + replies) — currently everything only prints to stdout
+- [x] `src/utils/browser.py` — Selenium WebDriver setup: `get_driver()` (headless Chrome with
+      a persistent profile at `data/browser_profile/`, gitignored, so session cookies survive
+      between runs per `docs/SPEC.md`'s Auth & Permissions), `is_logged_in()`. The
+      `SessionNotCreatedException` blocker (`/usr/local/bin/chromedriver` 139.x vs. installed
+      Chrome 152.x) is resolved: project dependencies now install into an isolated
+      `venv/` (gitignored, matching the repo's existing convention) instead of the global
+      Python environment — a prior ad hoc global `pip install` had bumped `urllib3` in a way
+      that conflicted with an unrelated globally-installed `kubernetes` package; that's been
+      reverted and the global environment is back to its original state. The stale
+      `/usr/local/bin/chromedriver` symlink (which was shadowing Selenium Manager's own
+      version-matched download — Selenium Manager detects a PATH mismatch but won't override
+      it) was renamed aside to `chromedriver.bak-139` with Jeff's explicit go-ahead; the
+      underlying Homebrew cask install is untouched, so this is trivially reversible. Selenium
+      Manager now auto-downloads and caches a matching driver
+      (`~/.cache/selenium/chromedriver/mac-arm64/152.0.7977.82/`). Verified:
+      `venv/bin/python tests/manual_test_browser.py` passes (headless launch + navigate +
+      quit), and a direct manual call to `is_logged_in()` against live `x.com/home` (no
+      credentials configured) correctly returns `False` with no crash.
+- [ ] `src/signals/timeline_scraper.py` — `fetch() -> list[Signal]`, the same interface every
+      other `signals/*.py` module implements. Scrapes the home timeline; reuses
+      `engagement.content_analyzer.analyze_post()`'s `domain_guess` for domain classification
+      rather than duplicating keyword logic, dropping posts that guess `'general'` (Signal's
+      domain is only ever `'technology'`/`'history'`/`'arts'` elsewhere in the codebase).
+      Import-clean and wired to the confirmed `domain_guess` interface, but scraping a real
+      timeline needs an authenticated session, which needs real credentials (next item) —
+      still unverified end-to-end.
+- [ ] Login/session handling — `utils/browser.py`'s `log_in()`/`ensure_logged_in()`, reading
+      `config.TWITTER_USERNAME`/`TWITTER_PASSWORD` (`TWITTER_USERNAME`/`TWITTER_PASSWORD`
+      still empty in this repo's `.env`). Genuinely unverified: needs real credentials added
+      directly to `.env` (never pasted into chat, per `CLAUDE.md`) plus a deliberate,
+      explicit go-ahead before running live against a real X account — a failed or
+      flagged automated login has real consequences for that account.
+- [ ] Actual posting (original posts + replies) — `utils/browser.py`'s `post_tweet()`/
+      `post_reply()`. Implemented; deliberately never invoked by this phase's own test
+      harness (`tests/manual_test_browser.py` only calls the read-only `is_logged_in()`) —
+      posting is public and effectively irreversible, so it should run only when explicitly
+      requested, never as part of an automated check. Unverified.
+
+**Selector caveat**: `utils/browser.py`'s `data-testid`/CSS selectors are best-effort against
+X's current web app DOM, not a public API contract — they can silently break if X changes its
+DOM. `docs/SPEC.md`'s Non-Goals already accepts this risk in exchange for avoiding paid X API
+access.
 
 ## Phase 7 — Orchestration ⬜ not started
 
