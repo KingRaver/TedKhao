@@ -66,8 +66,12 @@ log. Cadence and behavior are controlled via `src/config.py` and `.env`.
 
 Generation saves drafts; dry runs do not consume reply targets. Live publication attempts
 are recorded before browser access. Confirmed replies suppress duplicates, while uncertain
-and legacy outcomes are held for reconciliation. Current browser methods provide no
-confirmation evidence, so submissions remain uncertain pending RC-104.
+and legacy outcomes are held for reconciliation. Browser methods now observe X's actual
+response to a submission -- a toast with a status permalink, or an error dialog -- before
+reporting confirmed, failed, or uncertain (RC-104); a bare click is never read as success,
+and a timeout or crash after submission stays uncertain rather than being retried
+automatically. Real X selectors and confirmation behavior remain unverified against a live
+account pending RC-110's authorized live check.
 Before the first startup with an existing database, follow the
 [RC-102 backup and migration procedure](docs/PUBLICATION_MIGRATION.md).
 
@@ -101,7 +105,11 @@ subprocesses, and SQLite access outside its temporary directory. RC-102 checks a
 publication outcomes, restart holds, transaction rollback, and migration/restore against
 copied legacy fixtures. RC-103 checks cover `BrowserSession` lifecycle against a fake driver:
 one launch across multiple cycles, shared driver identity, no per-action `quit()`, bounded
-crash recovery, and clean shutdown on interruption. The operational database is not migrated
+crash recovery, and clean shutdown on interruption. RC-104 checks cover submission
+confirmation against a fake driver: a toast with a status permalink resolves to confirmed
+(with the external ID/URL captured), an error dialog resolves to failed, a bounded timeout
+with no evidence resolves to uncertain rather than either, and a crash after the click
+propagates without touching the shared driver. The operational database is not migrated
 by these tests.
 
 Model-backed voice review is separate:

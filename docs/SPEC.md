@@ -170,9 +170,14 @@ publication lifecycle. Generation saves drafts atomically with persona/source hi
 `posted_at` and `used_at` are NULL for new drafts and set only on confirmation. Historical
 rows remain unchanged and map to `legacy_unknown`, held for reconciliation. Confirmed
 reply IDs alone populate the success set; attempted/uncertain/legacy targets also block
-submission. See [publication storage and migration](PUBLICATION_MIGRATION.md) for the
-current schema contract, transition rules, and backup/rollback procedure. The legacy table
-shapes below remain for compatibility; their historical timestamps are not proof of publication.
+submission. RC-104 supplies the confirmation itself: `utils.browser.post_tweet()`/
+`post_reply()` observe X's response to a submission (a toast carrying the new post's status
+permalink, or an error/confirmation dialog) rather than treating a completed click as
+success -- a timeout or crash after submission stays uncertain, never confirmed or failed,
+until explicit reconciliation. See [publication storage and migration](PUBLICATION_MIGRATION.md)
+for the current schema contract, transition rules, and backup/rollback procedure. The legacy
+table shapes below remain for compatibility; their historical timestamps are not proof of
+publication.
 
 
 SQLite, mirroring the reference architecture's proven table shapes with content adapted to

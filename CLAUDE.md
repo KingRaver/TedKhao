@@ -55,16 +55,24 @@ Read in this order when picking up the project after time away:
 1. **`docs/SCAFFOLDING.md`** — the authoritative phase-by-phase build checklist, checked off
    against actually-verified state (file inventory + test runs), not against what `SPEC.md`
    describes on paper. If this file's "Current Status" section below ever disagrees with
-   `SCAFFOLDING.md`, trust `SCAFFOLDING.md` and fix this file to match.
-2. **`CHANGELOG.md`** — `[Unreleased]` section shows what's actually landed, in order.
-3. **`docs/SPEC.md`** — full technical specification: architecture, data models, LLM
+   `SCAFFOLDING.md`, trust `SCAFFOLDING.md` and fix this file to match. This is a historical
+   record of the original build, frozen once a phase is done — it does not track post-launch
+   remediation; that's `docs/REVIEW_CHECKLIST.md` below.
+2. **`docs/REVIEW_CHECKLIST.md`** — the live post-launch remediation tracker (RC-101–RC-110):
+   work IDs, dependencies, acceptance checks, and dated verification evidence for the eight
+   code-review findings plus the persistent-browser requirement. This is where current
+   remediation status actually lives — completion here does not get restated in this file's
+   "Current Status" section below. Use `/phase-runner` with this file and a phase number to
+   work the next item; see its own "Workflow" section for the read-before-you-start order.
+3. **`CHANGELOG.md`** — `[Unreleased]` section shows what's actually landed, in order.
+4. **`docs/SPEC.md`** — full technical specification: architecture, data models, LLM
    integration design, deployment plan, open questions.
-4. **`docs/STRUCTURE.md`** — annotated file tree and the reasoning behind module boundaries.
+5. **`docs/STRUCTURE.md`** — annotated file tree and the reasoning behind module boundaries.
    Consult before adding a new file — there's almost certainly a designated home for it.
-5. **`VOICE_GUIDE.md`** — the character bible: registers, phases, tone rules, what TedKhao
+6. **`VOICE_GUIDE.md`** — the character bible: registers, phases, tone rules, what TedKhao
    would and wouldn't say. Consult before touching any prompt template or voice-bank content —
    this is the source of truth for "does this sound like TedKhao."
-6. **`docs/RESEARCH_NOTES.md`** — the underlying `defi`/`karma` research (file paths, line
+7. **`docs/RESEARCH_NOTES.md`** — the underlying `defi`/`karma` research (file paths, line
    numbers, verbatim findings) that `docs/SPEC.md`'s architecture decisions are drawn from.
    Consult when a design choice needs re-justifying or re-examining, rather than re-researching
    the source repos from scratch.
@@ -76,6 +84,9 @@ Read in this order when picking up the project after time away:
 - When the file tree changes structurally (new top-level module, renamed package), update
   `docs/STRUCTURE.md` in the same change, not as a follow-up.
 - When a phase's status changes, update `docs/SCAFFOLDING.md` in the same change.
+- When an RC work item's status changes, update its row and phase section in
+  `docs/REVIEW_CHECKLIST.md` in the same change, per that file's own workflow — don't
+  duplicate its current status in this file or any other document.
 - Every meaningful change gets a `CHANGELOG.md` entry under `[Unreleased]`. Cut a version
   entry only when the user asks for one.
 - If a design decision changes the Register or Phase taxonomy, update `docs/SPEC.md` and
@@ -105,6 +116,11 @@ Read in this order when picking up the project after time away:
   to start implementing. Answer it; wait for an explicit instruction before writing code.
 
 ## Current Status
+
+This section covers the original build (`docs/SCAFFOLDING.md`'s Phases 1–9) only.
+Post-launch remediation (RC-101–RC-110, driven by a code review) is tracked separately and
+currently in progress — read `docs/REVIEW_CHECKLIST.md`'s work register for its actual
+status rather than looking for it here.
 
 Phases 1 (Persona Engine), 2 (Reply Pipeline), 3 (Signal Ingestion), 4 (Original Post
 Generation), 5 (Persistence), and 7 (Orchestration) are built and manually tested. Phase 6
@@ -153,15 +169,17 @@ Currently available locally: `qwen2.5-coder:7b`, `deepseek-coder-v2:16b`, `nomic
 
 If you're picking this project up mid-stream:
 
-1. Read `docs/SCAFFOLDING.md` for the authoritative phase status.
-2. Read `CHANGELOG.md`'s `[Unreleased]` section for what's actually landed.
-3. Skim `docs/SPEC.md`'s "Open Questions" for anything resolved since.
-4. If touching persona/voice logic, re-read `VOICE_GUIDE.md` first — register/phase names and
+1. Read `docs/SCAFFOLDING.md` for the authoritative original-build phase status.
+2. Read `docs/REVIEW_CHECKLIST.md`'s work register for the current post-launch remediation
+   status (RC-101–RC-110) — this is a separate, actively-worked track from Step 1.
+3. Read `CHANGELOG.md`'s `[Unreleased]` section for what's actually landed.
+4. Skim `docs/SPEC.md`'s "Open Questions" for anything resolved since.
+5. If touching persona/voice logic, re-read `VOICE_GUIDE.md` first — register/phase names and
    rules must match exactly.
-5. Check whether `.env` exists and has a valid `ANTHROPIC_API_KEY` before assuming the bot can
+6. Check whether `.env` exists and has a valid `ANTHROPIC_API_KEY` before assuming the bot can
    run end-to-end against Claude.
-6. If testing against a local model, run `ollama list` first and read "Local Model Testing
+7. If testing against a local model, run `ollama list` first and read "Local Model Testing
    Notes" above — especially the no-download-without-approval rule.
-7. If the two-machine architecture is in play, confirm which machine you're on and which
+8. If the two-machine architecture is in play, confirm which machine you're on and which
    provider `src/llm_provider.py` is configured to hit — don't assume Claude by default once
    the local-model path is active.

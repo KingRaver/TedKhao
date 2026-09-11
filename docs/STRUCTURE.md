@@ -16,7 +16,11 @@ tedkhao/
 │
 ├── docs/
 │   ├── SPEC.md                 # Full technical specification
-│   └── STRUCTURE.md            # This file
+│   ├── STRUCTURE.md            # This file
+│   ├── SCAFFOLDING.md          # Historical phase-by-phase build checklist (Phases 1-9)
+│   ├── REVIEW_CHECKLIST.md     # Live post-launch remediation tracker (RC-101-110)
+│   ├── PUBLICATION_MIGRATION.md # RC-102 publication schema, migration, and reconciliation
+│   └── RESEARCH_NOTES.md       # Source-referenced findings from the defi/karma research
 │
 ├── src/
 │   ├── bot.py                  # Thin orchestrator: wires up the analysis/post cycle, no business logic inline
@@ -50,7 +54,7 @@ tedkhao/
 │   │
 │   └── utils/
 │       ├── __init__.py
-│       ├── browser.py             # Selenium WebDriver setup + RC-103 BrowserSession ownership
+│       ├── browser.py             # Selenium WebDriver setup + RC-103 BrowserSession ownership + RC-104 confirmation
 │       └── logger.py              # Centralized logging
 │
 ├── data/
@@ -59,15 +63,17 @@ tedkhao/
 │
 ├── logs/                          # Application logs (gitignored)
 │
-└── tests/
-    ├── manual_test_publication.py # RC-102 lifecycle, atomicity, copied migration/restore checks
-    ├── manual_test_browser_session.py # RC-103 fake-driver BrowserSession lifecycle checks
-    ├── run_offline.py             # RC-101 offline persistence/cycle/isolation checks
-    ├── review_database.py         # Temporary or explicitly selected voice-review storage
-    ├── test_state.py              # Register/Phase classification tests
-    ├── test_voice_bank.py
-    ├── test_prompts.py
-    └── test_signals/               # One test module per signal source
+└── tests/                          # Manual harnesses, plain asserts -- no pytest suite yet (Phase 9)
+    ├── run_offline.py              # RC-101 entry point: runs every offline-safe harness below
+    ├── manual_test_publication.py  # RC-102/RC-103 lifecycle, atomicity, copied migration/restore checks
+    ├── manual_test_browser_session.py      # RC-103 fake-driver BrowserSession lifecycle checks
+    ├── manual_test_browser_confirmation.py # RC-104 fake-driver submission confirmation checks
+    ├── manual_test_persistence.py  # Phase 5 schema/PersonaMemory persistence checks
+    ├── manual_test_bot_cycle.py    # Phase 7 orchestrator cycle checks (fake provider, temp db)
+    ├── manual_test_posts.py        # Model-backed original-post voice review harness
+    ├── manual_test_replies.py      # Model-backed reply voice review harness
+    ├── manual_test_browser.py      # Live-Chrome smoke test (no real account actions)
+    └── review_database.py          # Temporary or explicitly selected voice-review storage
 ```
 
 ## Design notes
