@@ -5,7 +5,7 @@ docs/SPEC.md's four-layer architecture.
 from engagement.content_analyzer import analyze_post
 from llm_provider import LLMProvider
 from persona.memory import PersonaMemory
-from persona.prompts import build_reply_prompt
+from persona.prompts import build_reply_prompt, build_shorten_prompt
 from persona.state import Register, select_register_for_reply
 import config
 
@@ -34,7 +34,7 @@ def generate_reply(post: dict, llm_provider: LLMProvider, memory: PersonaMemory)
     )
 
     reply_text = llm_provider.generate(prompt, max_tokens=200, temperature=0.9)
-    reply_text = _enforce_length(reply_text, config.REPLY_MAX_CHARS)
+    reply_text = _ensure_length(reply_text, llm_provider)
 
     memory.record_register(register)
     memory.mark_replied(post["id"])
@@ -47,8 +47,32 @@ def generate_reply(post: dict, llm_provider: LLMProvider, memory: PersonaMemory)
     }
 
 
-def _enforce_length(text: str, max_chars: int) -> str:
-    """Bring text within max_chars without lopping off mid-sentence.
+def _ensure_length(text: str, llm_provider: LLMProvider) -> str:
+    """Bring an over-length reply within the hard limit by having the model rewrite it.
+
+    String-truncation can't "solve" an over-length reply -- it can only hide the symptom
+    by cutting content, which is exactly the mid-sentence chop this replaces. The correct
+    fix is generation-side: ask the model to compress its own reply, preserving voice and
+    meaning, retrying a bounded number of times. Sentence-aware truncation is kept only as
+    a last-resort safety net for the rare case the model can't converge -- we must never
+    post something over the platform's hard limit, but reaching that fallback should be
+    uncommon once the soft target in build_reply_prompt and this loop are doing their job.
+    """
+    text = text.strip()
+    if len(text) <= config.REPLY_MAX_CHARS:
+        return text
+
+    for _ in range(config.REPLY_SHORTEN_ATTEMPTS):
+        shorten_prompt = build_shorten_prompt(text, config.REPLY_MAX_CHARS)
+        text = llm_provider.generate(shorten_prompt, max_tokens=150, temperature=0.5).strip()
+        if len(text) <= config.REPLY_MAX_CHARS:
+            return text
+
+    return _sentence_aware_truncate(text, config.REPLY_MAX_CHARS)
+
+
+def _sentence_aware_truncate(text: str, max_chars: int) -> str:
+    """Last-resort safety net only -- see _ensure_length. Never the primary mechanism.
 
     Prefers cutting at the end of the last complete sentence that fits (no ellipsis
     needed -- it already reads as finished). Only falls back to a word-boundary cut
