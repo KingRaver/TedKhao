@@ -1,18 +1,10 @@
 """Publication lifecycle boundary. Browser confirmation is supplied by RC-104."""
-from dataclasses import dataclass
 import logging
 
 from utils import browser
+from utils.browser import PublicationOutcome  # noqa: F401 -- re-exported for existing callers/tests
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class PublicationOutcome:
-    status: str
-    external_id: str | None = None
-    external_url: str | None = None
-    detail: str | None = None
 
 
 def publish(result, memory, session, target_url=None):
@@ -38,7 +30,9 @@ def publish(result, memory, session, target_url=None):
             detail=f'{type(error).__name__}: browser operation failed')
         raise
     else:
-        # Existing click-only browser methods return None: never infer confirmation.
+        # Defensive fallback: browser.post_tweet()/post_reply() always return a
+        # PublicationOutcome (RC-104), but a caller/test double that returns None or a
+        # malformed outcome must never be read as confirmation.
         if not isinstance(outcome, PublicationOutcome) or outcome.status not in {
             'confirmed', 'failed', 'uncertain'
         } or (outcome.status == 'confirmed' and not (outcome.external_id or outcome.external_url)):

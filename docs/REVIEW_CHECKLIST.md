@@ -40,7 +40,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 1 | RC-101 | High | Isolate tests and use production handlers (finding 8) | None | Verified | Codex | Phase 1 evidence below; `feat/phase-1-isolated-test-harnesses` |
 | 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Verified | Codex | Phase 2 evidence below; `feat/phase-2-publication-lifecycle` |
 | 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Verified | Claude | Phase 3 evidence below; `feat/phase-3-persistent-browser` |
-| 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Planned | Unassigned | Pending |
+| 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Verified | Claude | Phase 4 evidence below; `feat/phase-4-confirm-submission` |
 | 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Planned | Unassigned | Pending |
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Planned | Unassigned | Pending |
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Planned | Unassigned | Pending |
@@ -180,17 +180,42 @@ unverified live per RC-104/RC-110.
 
 Files: `src/utils/browser.py`, `src/bot.py`, `src/database.py`.
 
-- [ ] Publishing returns a structured outcome after observing confirmation or rejection;
+- [x] Publishing returns a structured outcome after observing confirmation or rejection;
       a button click alone never produces a success log or confirmed database state.
-- [ ] Capture the published post/reply ID or URL and associate it with the intended target.
-- [ ] Use bounded waits and distinguish confirmed rejection from a timeout after submission.
-- [ ] A timeout/crash after submission remains uncertain until reconciliation finds the
+- [x] Capture the published post/reply ID or URL and associate it with the intended target.
+- [x] Use bounded waits and distinguish confirmed rejection from a timeout after submission.
+- [x] A timeout/crash after submission remains uncertain until reconciliation finds the
       publication or establishes a safe retry decision. Do not automatically resubmit it.
-- [ ] Test success, rejection, timeout, and crash after clicking with controlled browser
+- [x] Test success, rejection, timeout, and crash after clicking with controlled browser
       fixtures; ensure confirmation occurs while the shared browser remains open.
 
 Evidence required: deterministic outcome tests. Real X selectors and confirmation behavior
 remain unverified until RC-110's explicitly authorized live check.
+
+RC-104 verification (2026-09-11, working tree based on `6a0e0f1`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_browser_confirmation.py`
+fake-driver checks alongside every existing offline check: `post_tweet()`/`post_reply()` now
+wait (bounded, `_await_submission_outcome()` in `utils/browser.py`) for X to show either a
+"sent" toast carrying the new post's status permalink or an error/confirmation dialog, rather
+than treating a completed click as success. A toast with a status link resolves to `confirmed`
+with `external_id`/`external_url` parsed from its href; an error/confirmation dialog resolves
+to `failed` with its message as `detail`; a toast with no permalink, or no evidence at all
+within the bound, resolves to `uncertain`, never `confirmed` or `failed`; an exception raised
+during/after the click (simulating a crash) propagates untouched rather than being reported as
+any outcome, and in every case `driver.quit()` is never called, so the shared `BrowserSession`
+(RC-103) stays open across the observation. `PublicationOutcome` moved from
+`engagement/publication.py` into `utils/browser.py` (the layer that now actually determines it)
+and is re-exported from `engagement.publication` for existing callers/tests, which required no
+changes: `tests/manual_test_publication.py`'s RC-102/RC-103 lifecycle, uncertainty, atomicity,
+and post cases all still pass unchanged against the new confirmation path, including
+`test_uncertainty`'s click-only (`post_reply` returning `None`) and submission-exception cases,
+which `publish()`'s existing defensive fallback still classifies as `uncertain`/`failed` exactly
+as before.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured. No real Chrome or X account was used
+-- real X selectors (`_TOAST`, `_TOAST_STATUS_LINK`, `_ERROR_DIALOG`) and confirmation behavior
+against the live DOM remain unverified per this phase's evidence requirement; that live check is
+RC-110's. Not deployed.
 
 ## Phase 5: RC-105 — Validate generated output before state changes
 
