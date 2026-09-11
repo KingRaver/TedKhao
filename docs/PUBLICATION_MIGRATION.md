@@ -22,10 +22,12 @@ targets also block new attempts, without being reported as successful. Failed an
 targets remain eligible in a later explicitly live cycle, bounded by its reply limit.
 A failed publication can also transition to attempted through the lifecycle API; every
 transition is retained. Confirmation requires external identity supplied by a trusted
-publication adapter. The existing browser returns no evidence, so a click-only return becomes
-uncertain. RC-104 will implement real confirmation; this phase tests that contract with fakes.
-Failures during browser startup/authentication are failed; exceptions once the posting
-method begins are conservatively uncertain. Driver ownership remains for RC-103.
+publication adapter. RC-104 implements real confirmation: `utils.browser.post_tweet()`/
+`post_reply()` observe X's response to a submission (a toast with a status permalink, or an
+error dialog) and return a structured outcome; a click with no such evidence, or a bounded
+wait that times out, still becomes uncertain rather than confirmed. Failures during browser
+startup/authentication are failed; exceptions once the posting method begins are
+conservatively uncertain. Driver ownership remains RC-103's.
 
 ## Backup and rollback
 
