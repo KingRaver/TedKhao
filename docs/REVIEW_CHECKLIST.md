@@ -41,7 +41,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 | 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Verified | Codex | Phase 2 evidence below; `feat/phase-2-publication-lifecycle` |
 | 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Verified | Claude | Phase 3 evidence below; `feat/phase-3-persistent-browser` |
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Verified | Claude | Phase 4 evidence below; `feat/phase-4-confirm-submission` |
-| 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Planned | Unassigned | Pending |
+| 5 | RC-105 | Medium | Reject empty generation (finding 6) | RC-101, RC-102 | Verified | Claude | Phase 5 evidence below; `feat/phase-5-validate-output` |
 | 6 | RC-106 | High | Correct feed selection and phase classification (finding 3) | RC-101 | Planned | Unassigned | Pending |
 | 7 | RC-107 | Medium | Prevent repeated source coverage (finding 4) | RC-102, RC-106 | Planned | Unassigned | Pending |
 | 8 | RC-108 | Medium | Ground prompt structures in available context (finding 5) | RC-106, RC-107 | Planned | Unassigned | Pending |
@@ -223,15 +223,44 @@ RC-110's. Not deployed.
 
 Files: engagement handlers and `src/llm_provider.py`.
 
-- [ ] Validate nonempty text on initial generation and every shortening response.
-- [ ] Handle missing/null/malformed provider output with an explicit generation failure;
+- [x] Validate nonempty text on initial generation and every shortening response.
+- [x] Handle missing/null/malformed provider output with an explicit generation failure;
       do not produce an empty publishable draft or consume a reply target.
-- [ ] Keep regeneration attempts bounded and report a failed/skipped outcome when exhausted.
-- [ ] Test whitespace, null/missing output, empty shortening output, valid output, and the
+- [x] Keep regeneration attempts bounded and report a failed/skipped outcome when exhausted.
+- [x] Test whitespace, null/missing output, empty shortening output, valid output, and the
       existing overlength shortening/truncation paths.
 
 Evidence required: provider/handler regression results showing invalid output cannot reach
 browser submission or confirmed publication history.
+
+RC-105 verification (2026-09-11, working tree based on `be87180`):
+`venv/bin/python tests/run_offline.py` passed the new `tests/manual_test_generation_validation.py`
+checks alongside every existing offline check. `llm_provider.py` gained `GenerationError` and
+both `AnthropicProvider.generate()`/`OpenAICompatibleProvider.generate()` now catch the specific
+missing/null/malformed shapes (empty `content`, null `text`/`content`, missing `choices`, non-JSON
+body) and raise it instead of leaking a bare `IndexError`/`KeyError`/`AttributeError`/`ValueError`;
+a well-formed nonempty response still returns normally. `engagement/reply_handler.py` gained
+`_generate_nonempty()` (imported by `post_handler.py`, matching the existing
+`_sentence_aware_truncate` sharing convention) which retries initial generation up to the new
+`config.REPLY_GENERATION_ATTEMPTS`/`POST_GENERATION_ATTEMPTS` (2 each) on empty-after-strip text
+or a caught `GenerationError`, and raises `GenerationError` -- never returning empty text -- once
+attempts are exhausted; `generate_post()`/`generate_reply()` call this before `memory.save_draft()`,
+so an exhausted failure never reaches the database (row counts asserted unchanged) and never calls
+`memory.reply_is_held()`/holds a target. Both `_ensure_length()` shortening loops (reply and post)
+were fixed to stop accepting an empty/malformed shorten attempt as if it were valid output (the
+`len("") <= max_chars` bug the baseline evidence recorded as "Empty post accepted and persisted"):
+a wasted attempt now leaves the last known-valid (guaranteed nonempty) candidate in place, and the
+existing `_sentence_aware_truncate()` last-resort fallback runs against that candidate, not the
+empty one. Tests cover whitespace-only output, a provider that only ever raises `GenerationError`,
+recovery within the bounded attempts, a null/malformed reply target case (confirms the target is
+never held), a valid-output baseline, an empty/malformed shorten attempt falling back to
+truncation, a valid shorten attempt returning early, and the pre-existing always-over-length
+truncation path still enforcing the hard limit.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No repository lint/typecheck/build command is configured. No real Anthropic/local-model API or
+browser was used -- provider-shape tests mock the SDK client/`requests.post` return values
+directly, never make a network call, and run inside `run_offline.py`'s existing socket/subprocess
+blocking. Not deployed.
 
 ## Phase 6: RC-106 — Source selection and phase correctness
 
@@ -353,6 +382,7 @@ from `docs/` rather than embedding secrets or operational database dumps.
 |---|---|---|---|---|---|
 | 2026-09-11 | Planning | Working tree | Review findings mapped to RC-101–RC-110 | Checklist created | None |
 | 2026-09-11 | RC-103 | `feat/phase-3-persistent-browser` | `venv/bin/python tests/run_offline.py`; `venv/bin/python tests/manual_test_browser.py` (live Chrome, no credentials) | Offline fake-driver session/crash/shutdown checks and RC-102 lifecycle regressions passed; live headless Chrome confirmed SessionPaused on no login and profile-lock exclusion | Not deployed |
+| 2026-09-11 | RC-105 | `feat/phase-5-validate-output` | `venv/bin/python tests/run_offline.py` (incl. new `tests/manual_test_generation_validation.py`); `venv/bin/python -m compileall -q src tests`; `git diff --check` | Malformed/missing/null provider responses raise `GenerationError` (both providers); empty/malformed initial or shorten output is retried within bounded attempts and never persists a draft or holds a reply target; existing overlength truncation path still enforces the hard limit | Not deployed |
 
 ## Decisions and change history
 

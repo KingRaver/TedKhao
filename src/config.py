@@ -23,12 +23,18 @@ REPLY_MAX_CHARS = 275
 # it, so asking for a target well under the real limit leaves margin for that overshoot.
 REPLY_TARGET_CHARS = 220
 REPLY_SHORTEN_ATTEMPTS = 2
+# RC-105: bounded retries when the provider comes back with missing/null/malformed or
+# empty-after-strip text, before generate_reply() reports an explicit failure instead of
+# persisting an empty draft.
+REPLY_GENERATION_ATTEMPTS = 2
 RECENT_REGISTER_MEMORY = 3
 
 # Same X/Twitter platform limit as replies, so same margin-below-the-ceiling reasoning applies.
 POST_MAX_CHARS = 275
 POST_TARGET_CHARS = 220
 POST_SHORTEN_ATTEMPTS = 2
+# RC-105: same bounded-retry contract as REPLY_GENERATION_ATTEMPTS, for generate_post().
+POST_GENERATION_ATTEMPTS = 2
 
 # bot.py orchestration cadence/gating. Default interval targets the upper end of docs/SPEC.md's
 # "3-6 original posts a day" user story (6 cycles/day @ one post per cycle); reply-candidate
