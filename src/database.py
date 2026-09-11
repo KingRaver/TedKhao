@@ -319,6 +319,18 @@ def get_covered_sources(window_start: str, db_path: Optional[str] = None) -> set
     return {(row["source_url"], row["source_fingerprint"]) for row in rows}
 
 
+def get_last_confirmed_post(db_path: Optional[str] = None) -> Optional[str]:
+    """Text of the most recently confirmed original post, for RC-108's callback grounding --
+    None when no post has ever been confirmed. Confirmed only, not draft/attempted/uncertain,
+    so a callback never references a post that may not actually exist on the timeline."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT content FROM publications WHERE kind = 'post' AND status = 'confirmed' "
+            "ORDER BY confirmed_at DESC LIMIT 1"
+        ).fetchone()
+    return row["content"] if row else None
+
+
 def reply_is_held(target_id, db_path=None):
     with _connect(db_path) as conn:
         return conn.execute(

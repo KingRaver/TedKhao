@@ -85,8 +85,14 @@ than using one fixed prompt shape, to keep output from feeling formulaic over ti
 `delighted, awestruck, reverent, wistful, amused, restless, provoked, giddy, curious, dry`
 
 **Structure pool** (shape of the post):
-`single observation, question posed outward, short thread (2-4 posts), callback to an earlier
-post, direct comparison ("X is basically Y, and here's why"), quiet fact with no commentary`
+`single observation, question posed outward, callback to an earlier post, direct comparison
+("X is basically Y, and here's why"), quiet fact with no commentary`
+
+Threads (2-4 posts) are deferred (RC-108): the single-post pipeline has no way to publish the
+follow-up posts a thread opener sets up, so it's not offered as a structure until thread
+publishing gets its own tracked scope. "Callback to an earlier post" is only offered when a
+confirmed earlier post is actually available to reference — see the personalization pool's
+"still thinking about" callback below for the vaguer, always-available version of continuity.
 
 **Personalization pool** (adds specificity/individuality, one per generation):
 `personal reaction, contrarian angle, historical parallel, "still thinking about" callback,

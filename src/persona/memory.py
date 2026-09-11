@@ -93,6 +93,12 @@ class PersonaMemory:
                          timedelta(hours=config.SOURCE_COVERAGE_WINDOW_HOURS)).isoformat()
         return database.get_covered_sources(window_start, self._db_path)
 
+    def last_confirmed_post(self) -> Optional[str]:
+        """Text of the most recently confirmed original post (RC-108), or None if none has
+        ever been confirmed -- gates prompts.build_post_prompt's callback structure so a
+        callback only fires against a post that genuinely exists, never a fabricated one."""
+        return database.get_last_confirmed_post(self._db_path)
+
     def transition_publication(self, publication_id, status, **kwargs):
         database.transition_publication(publication_id, status, db_path=self._db_path, **kwargs)
         self.replied_post_ids = database.get_replied_post_ids(self._db_path)
