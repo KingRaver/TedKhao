@@ -102,6 +102,26 @@ PERSONALIZATION_POOL = [
 ]
 
 
+def build_shorten_prompt(text: str, max_chars: int) -> str:
+    """Ask the model to rewrite its own reply to fit, rather than having code chop it.
+
+    Used when a generated reply comes back over the hard character limit despite the
+    soft target in build_reply_prompt. Preserves voice and meaning by construction --
+    the model is doing the compression, not a string-slicing fallback.
+    """
+    return f"""The following reply is {len(text)} characters, over the {max_chars} character limit.
+
+Reply:
+"{text}"
+
+Rewrite it to fit within {max_chars} characters. Preserve the core point, the register/tone, \
+and any specific facts -- cut secondary clauses or rephrase for concision, don't just chop the \
+ending off. The result must read as a complete, naturally-ending thought, not a fragment.
+
+Rewritten reply ({max_chars} characters or fewer):
+"""
+
+
 def _format_examples(register: Register) -> str:
     examples = FEW_SHOT_EXAMPLES[register]
     blocks = []
@@ -138,7 +158,9 @@ Structure the reply as: {structure}.
 Include: {personalization}.
 
 Constraints:
-- Maximum {config.REPLY_MAX_CHARS} characters.
+- Aim for around {config.REPLY_TARGET_CHARS} characters -- a complete thought that ends \
+naturally, not a run-on that gets cut off. {config.REPLY_MAX_CHARS} is the hard ceiling, but \
+writing to that ceiling is how replies end up truncated mid-sentence, so leave margin.
 - No hashtags. Emojis only if the register genuinely calls for one.
 - Sound like a real person replying, not an automated account.
 

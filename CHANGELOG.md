@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Reply length overflow: replies exceeding the character limit were being chopped
+  mid-sentence by string truncation. Now the model rewrites its own reply to fit when it
+  runs over (`_ensure_length()` in `reply_handler.py`), with truncation kept only as a
+  last-resort safety net. Hard limit lowered to 275 chars with a 220-char soft target in
+  the prompt so generation naturally leaves margin.
+
 ### Planned
 - Signal ingestion modules (arXiv, Wikipedia "On this day", Hacker News, museum APIs)
 - State engine (Register + Phase classification)

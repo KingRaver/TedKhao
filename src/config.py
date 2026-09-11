@@ -15,5 +15,10 @@ LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "llama3.1")
 TWITTER_USERNAME = os.getenv("TWITTER_USERNAME")
 TWITTER_PASSWORD = os.getenv("TWITTER_PASSWORD")
 
-REPLY_MAX_CHARS = 280
+REPLY_MAX_CHARS = 275
+# Soft target given to the model -- deliberately below the hard limit. Models (especially
+# smaller/local ones) generate close to whatever ceiling they're given and frequently overshoot
+# it, so asking for a target well under the real limit leaves margin for that overshoot.
+REPLY_TARGET_CHARS = 220
+REPLY_SHORTEN_ATTEMPTS = 2
 RECENT_REGISTER_MEMORY = 3
