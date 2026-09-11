@@ -4,8 +4,10 @@ for human review against VOICE_GUIDE.md.
 Not an automated pytest suite -- this is meant to be read by a person deciding whether
 TedKhao's voice is working, before any of this touches a real timeline. Run with:
 
-    python tests/manual_test_replies.py
+    python tests/manual_test_replies.py [--review-db PATH]
 """
+from review_database import review_database
+
 import os
 import sys
 
@@ -49,7 +51,7 @@ FAKE_POSTS = [
 ]
 
 
-def main() -> None:
+def run_review(db_path: str) -> None:
     try:
         provider = get_provider()
     except ValueError as e:
@@ -57,7 +59,7 @@ def main() -> None:
         print("Copy .env.example to .env and fill in ANTHROPIC_API_KEY, then re-run.\n")
         return
 
-    memory = PersonaMemory()
+    memory = PersonaMemory(db_path=db_path)
 
     for post in FAKE_POSTS:
         result = generate_reply(post, provider, memory)
@@ -72,6 +74,11 @@ def main() -> None:
     print("=" * 70)
     print(f"Recent registers used (anti-repetition check): "
           f"{[r.value for r in memory.recent_registers]}")
+
+
+def main(argv=None) -> None:
+    with review_database(argv) as db_path:
+        run_review(db_path)
 
 
 if __name__ == "__main__":

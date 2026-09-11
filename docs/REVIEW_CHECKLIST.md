@@ -37,7 +37,7 @@ Phase numbers are local to this document; RC IDs remain the stable work identifi
 
 | Phase | ID | Priority | Work | Dependencies | Status | Owner | Change / evidence |
 |---|---|---|---|---|---|---|---|
-| 1 | RC-101 | High | Isolate tests and use production handlers (finding 8) | None | Planned | Unassigned | Pending |
+| 1 | RC-101 | High | Isolate tests and use production handlers (finding 8) | None | Verified | Codex | Phase 1 evidence below; `feat/phase-1-isolated-test-harnesses` |
 | 2 | RC-102 | High | Model generation and publication separately (finding 1) | RC-101 | Planned | Unassigned | Pending |
 | 3 | RC-103 | High | Share a persistent browser and handle authentication | RC-101 | Planned | Unassigned | Pending |
 | 4 | RC-104 | High | Confirm publication and reconcile uncertain attempts (finding 2) | RC-102, RC-103 | Planned | Unassigned | Pending |
@@ -58,15 +58,24 @@ RC-107 → RC-108 → RC-109 → RC-110. Dependencies, rather than priority alon
 Files: `tests/manual_test_posts.py`, `tests/manual_test_replies.py`,
 `tests/manual_test_persistence.py`, `tests/manual_test_bot_cycle.py`.
 
-- [ ] Give voice-review harnesses temporary databases by default; any retained review data
+- [x] Give voice-review harnesses temporary databases by default; any retained review data
       must use an explicitly selected review database.
-- [ ] Replace the post harness's duplicated pipeline with `generate_post()`.
-- [ ] Establish one documented offline test command covering persistence and cycle behavior;
+- [x] Replace the post harness's duplicated pipeline with `generate_post()`.
+- [x] Establish one documented offline test command covering persistence and cycle behavior;
       separate model/browser integration harnesses from that command.
-- [ ] Verify offline tests require no credentials, make no network/browser calls, and leave
+- [x] Verify offline tests require no credentials, make no network/browser calls, and leave
       the operational database untouched.
 
 Evidence required: offline command and result, plus database-isolation regression results.
+
+RC-101 verification (2026-09-11, working tree based on `316d655`):
+`venv/bin/python tests/run_offline.py` passed persistence, cycle, and both voice-harness
+isolation checks. Fake-provider runs verified temporary cleanup, explicitly retained row
+counts, and operational-path rejection. The runner disables dotenv/credentials and rejects
+network, browser, subprocess, and SQLite access outside its temporary directory.
+`venv/bin/python -m compileall -q src tests` and `git diff --check` passed.
+No model or live-browser validation was performed; existing publication semantics remain
+for RC-102. No repository lint/typecheck/build command is configured. Not deployed.
 
 ## Phase 2: RC-102 — Publication lifecycle and migration
 

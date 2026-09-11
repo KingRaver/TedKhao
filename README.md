@@ -64,6 +64,34 @@ Running `src/bot.py` starts the full analysis/post cycle: fetch signals → clas
 register/phase → generate content or scan the timeline for reply opportunities → post →
 log. Cadence and behavior are controlled via `src/config.py` and `.env`.
 
+## Verification
+
+Run deterministic persistence, bot-cycle, and review-database isolation checks with:
+
+```bash
+venv/bin/python tests/run_offline.py
+```
+
+No credentials are required: the runner disables `.env` loading, uses fake providers and
+removed-after-run temporary databases, and blocks network connections, browser launches,
+subprocesses, and SQLite access outside its temporary directory. Existing dry-run reply
+persistence assertions describe current behavior; publication lifecycle correction is RC-102.
+
+Model-backed voice review is separate:
+
+```bash
+venv/bin/python tests/manual_test_posts.py
+venv/bin/python tests/manual_test_replies.py
+# Optional retention, explicitly separate from the operational database:
+venv/bin/python tests/manual_test_posts.py --review-db data/review-posts.db
+```
+
+These two harnesses call production generation handlers with fixture inputs and the configured
+model; their databases are temporary by default. `--review-db` rejects the configured
+operational database and `data/tedkhao.db`, including symlink/hard-link aliases.
+Model quality, live feeds, and `tests/manual_test_browser.py` are integration checks and
+are excluded from the offline command. Live X behavior remains unverified.
+
 ## Project structure
 
 See [docs/STRUCTURE.md](docs/STRUCTURE.md) for the full annotated layout. Briefly:
