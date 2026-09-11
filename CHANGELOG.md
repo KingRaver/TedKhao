@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than the plan in `docs/SPEC.md` -- Persona Engine and Reply Pipeline phases done, Signal
   Ingestion / Original Post Generation / Persistence / X integration / Orchestration phases
   not yet started.
+- `docs/RESEARCH_NOTES.md`: source-referenced (file path + line number) findings from the
+  `defi`/`karma` architecture research that `docs/SPEC.md`'s design decisions are drawn from.
+
+### Changed
+- Rewrote `CLAUDE.md` in one pass instead of leaving it as accumulated patches -- corrected
+  stale "no code written yet" status, added local-model testing notes (`gemma4:12b` and
+  `gpt-oss:20b` tested and deleted, with why), and stated standing conventions plainly rather
+  than framing them as gaps.
 
 ### Fixed
 - Reply length overflow: replies exceeding the character limit were being chopped
